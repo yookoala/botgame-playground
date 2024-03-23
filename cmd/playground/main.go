@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -23,9 +22,11 @@ func echoServer(conn net.Conn) {
 
 	respEncoder := json.NewEncoder(conn)
 	respEncoder.Encode(comms.NewGreeting("123", "Hello, client!"))
-	s := bufio.NewScanner(conn)
-	for s.Scan() {
-		fmt.Println(s.Text()) // Println will add back the final '\n'
+
+	bufSize := 1024
+	buf := make([]byte, bufSize)
+	for b, err := conn.Read(buf); err == nil; b, err = conn.Read(buf) {
+		log.Printf("Received: %s", buf[:b])
 	}
 	fmt.Println("Client disconnected")
 }
