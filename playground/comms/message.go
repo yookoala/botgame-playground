@@ -101,3 +101,10 @@ func NewGreeting(sessionID string) Message {
 		messageType: "greeting",
 	}
 }
+
+func MustMessage(m Message, err error) Message {
+	if err != nil {
+		panic(err)
+	}
+	return m
+}
