@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"fmt"
 	"log"
 	"net"
@@ -38,24 +37,15 @@ func main() {
 	}
 	defer conn.Close()
 
-	// Create a reader from the connection
-	reader := bufio.NewReader(conn)
-
-	// Read a line from the connection
-	b, err := reader.ReadBytes('\n')
-	if err != nil {
-		log.Fatal(err)
-	}
-	m, err := comms.NewMessageFromJSON(b)
+	sess, m, err := comms.NewSessionFromConn(conn)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	// Print the received message
+	// Print the received greeting message
 	log.Printf("Received: %v\n", m)
 
-	sess := comms.NewSession(m.SessionID(), conn)
-
+	// Listen to OS signals
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt)
 

@@ -69,6 +69,18 @@ func NewSession(id string, conn io.ReadWriteCloser) *Session {
 	}
 }
 
+// NewSessionFromConn creates a new Session from a newly
+// dailed connection and to obtain the session ID from the
+// greeting message.
+func NewSessionFromConn(conn io.ReadWriteCloser) (sess *Session, greeting Message, err error) {
+	greeting, err = NewMessageReader(conn).ReadMessage()
+	if err != nil {
+		return
+	}
+	sess = NewSession(greeting.SessionID(), conn)
+	return
+}
+
 // ID returns the session ID
 func (s *Session) ID() string {
 	return s.id
