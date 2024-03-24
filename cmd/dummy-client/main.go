@@ -8,6 +8,8 @@ import (
 	"os"
 	"os/signal"
 	"time"
+
+	"github.com/yookoala/botgame-playground/playground/comms"
 )
 
 func writeMsg(conn net.Conn, msg []byte) (err error) {
@@ -40,13 +42,19 @@ func main() {
 	reader := bufio.NewReader(conn)
 
 	// Read a line from the connection
-	message, err := reader.ReadBytes('\n')
+	b, err := reader.ReadBytes('\n')
+	if err != nil {
+		log.Fatal(err)
+	}
+	m, err := comms.NewMessageFromJSON(b)
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	// Print the received message
-	log.Printf("Received: %s\n", message)
+	log.Printf("Received: %v\n", m)
+
+	sess := comms.NewSession(m.SessionID(), conn)
 
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt)
@@ -61,7 +69,9 @@ func main() {
 				fmt.Printf("Received signal: %s\n", sig.String())
 			}
 		case err := <-waitErrorOnce(func() error {
-			return writeMsg(conn, []byte("Hello, server!\n"))
+			return sess.WriteMessage(comms.MustMessage(comms.NewMessageFromJSONString(
+				fmt.Sprintf(`{"sessionID": "%s", "type":"message","data":"Hello, server!"}`, sess.ID()),
+			)))
 		}):
 			if err == nil {
 				time.Sleep(1 * time.Second)

@@ -1,9 +1,8 @@
 package main
 
 import (
-	"bufio"
-	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"os"
@@ -12,29 +11,25 @@ import (
 	"github.com/yookoala/botgame-playground/playground/comms"
 )
 
-func echoServer(conn net.Conn) {
-	defer conn.Close()
-
-	// Create a session ID for the client.
-	// Send the client a single-line JSON message with the session ID and a greeting message.
-	// Listen for singlie-line JSON messages from the client.
-	// When a message is received, parse the JSON message and log.
-	// When the client disconnects, log the session ID and a goodbye message.
-
-	writer := json.NewEncoder(conn)
-	writer.Encode(comms.NewGreeting(sessionID))
-
-	// Create a reader from the connection
-	reader := bufio.NewReader(conn)
-
+func echoServer(sess *comms.Session) error {
+	defer sess.Close()
+	log.Printf("Session started: sessionID=%s", sess.ID())
+	sess.WriteMessage(comms.NewGreeting(sess.ID()))
 	for {
-		b, err := reader.ReadBytes('\n')
+		m, err := sess.ReadMessage()
 		if err != nil {
+			// Check if error is eof
+			if err == io.EOF {
+				log.Print("Client disconnecting")
+			} else {
+				log.Printf("Error reading message: %v", err)
+			}
 			break
 		}
-		log.Printf("Received: %s", b)
+		log.Printf("Received: %v", m)
 	}
-	fmt.Println("Client disconnected")
+	log.Println("Client disconnected")
+	return nil
 }
 
 func main() {
@@ -65,25 +60,12 @@ func main() {
 			// Check if sig is interrupt (Ctrl+C)
 			if sig.String() == "interrupt" {
 				l.Close()
+				close(c)
 			} else {
 				fmt.Printf("Received signal: %s\n", sig.String())
 			}
 		}
 	}()
 
-	for {
-		conn, err := l.Accept()
-		if err != nil {
-			switch err.(type) {
-			case *net.OpError:
-				log.Print("Socket closed. Quit")
-				os.Exit(0)
-			default:
-				log.Printf("Socket error: %v", err)
-				os.Exit(1)
-			}
-		}
-
-		go echoServer(conn)
-	}
+	comms.RunServer(l, comms.SessionHandlerFunc(echoServer))
 }
