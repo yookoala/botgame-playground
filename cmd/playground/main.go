@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -20,13 +21,18 @@ func echoServer(conn net.Conn) {
 	// When a message is received, parse the JSON message and log.
 	// When the client disconnects, log the session ID and a goodbye message.
 
-	respEncoder := json.NewEncoder(conn)
-	respEncoder.Encode(comms.NewGreeting("123", "Hello, client!"))
+	writer := json.NewEncoder(conn)
+	writer.Encode(comms.NewGreeting("123", "Hello, client!"))
 
-	bufSize := 1024
-	buf := make([]byte, bufSize)
-	for b, err := conn.Read(buf); err == nil; b, err = conn.Read(buf) {
-		log.Printf("Received: %s", buf[:b])
+	// Create a reader from the connection
+	reader := bufio.NewReader(conn)
+
+	for {
+		b, err := reader.ReadBytes('\n')
+		if err != nil {
+			break
+		}
+		log.Printf("Received: %s", b)
 	}
 	fmt.Println("Client disconnected")
 }
