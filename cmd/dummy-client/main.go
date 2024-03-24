@@ -40,30 +40,26 @@ func main() {
 	reader := bufio.NewReader(conn)
 
 	// Read a line from the connection
-	message, err := reader.ReadString('\n')
+	message, err := reader.ReadBytes('\n')
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	// Print the received message
-	log.Println("Received:", message)
+	log.Printf("Received: %s\n", message)
 
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt)
-	go func() {
-		for sig := range c {
+
+	for {
+		select {
+		case sig := <-c:
 			// Check if sig is interrupt (Ctrl+C)
 			if sig.String() == "interrupt" {
 				conn.Close()
 			} else {
 				fmt.Printf("Received signal: %s\n", sig.String())
 			}
-		}
-	}()
-
-	for {
-		select {
-		case <-time.After(10 * time.Second):
 		case err := <-waitErrorOnce(func() error {
 			return writeMsg(conn, []byte("Hello, server!\n"))
 		}):
@@ -71,7 +67,6 @@ func main() {
 				time.Sleep(1 * time.Second)
 				continue
 			}
-
 			switch err.(type) {
 			case *net.OpError:
 				log.Print("Socket closed. Quit")
