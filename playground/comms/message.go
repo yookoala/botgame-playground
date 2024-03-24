@@ -25,7 +25,8 @@ type message struct {
 
 // String returns the string representation of the message
 func (m *message) String() string {
-	return string(m.raw)
+	b, _ := m.MarshalJSON()
+	return string(b)
 }
 
 // GetSessionID returns the session ID of the message
