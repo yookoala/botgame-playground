@@ -67,5 +67,5 @@ func main() {
 		}
 	}()
 
-	comms.RunServer(l, comms.SessionHandlerFunc(echoServer))
+	comms.StartServer(l, comms.SessionHandlerFunc(echoServer))
 }

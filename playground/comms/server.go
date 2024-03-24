@@ -22,8 +22,8 @@ func getNewSessionIDs() <-chan string {
 	return ch
 }
 
-// RunServer creates a new server loop and start listening to the listener.
-func RunServer(listener net.Listener, sh SessionHandler) {
+// StartServer creates a new server loop and start listening to the listener.
+func StartServer(listener net.Listener, sh SessionHandler) {
 	defer listener.Close()
 
 	newSessionIDs := getNewSessionIDs()
