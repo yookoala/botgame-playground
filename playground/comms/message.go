@@ -95,6 +95,14 @@ func NewMessageFromJSONString(s string) (Message, error) {
 	return m, nil
 }
 
+// Create a new simple message
+func NewSimpleMessage(sessionID, messageType string) Message {
+	return &message{
+		sessionID:   sessionID,
+		messageType: messageType,
+	}
+}
+
 // Create a new greeting message
 func NewGreeting(sessionID string) Message {
 	return &message{
