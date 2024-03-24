@@ -11,12 +11,6 @@ import (
 	"github.com/yookoala/botgame-playground/playground/comms"
 )
 
-func writeMsg(conn net.Conn, msg []byte) (err error) {
-	// Send a message to the socket
-	_, err = conn.Write(msg)
-	return
-}
-
 func waitErrorOnce(fn func() error) <-chan error {
 	ch := make(chan error)
 	go func() {
