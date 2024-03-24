@@ -53,10 +53,12 @@ func TestSessionSymultanousIO(t *testing.T) {
 	end := &sync.WaitGroup{}
 	end.Add(2)
 
-	l := startDummyServer(t, "unix", "./echo.sock")
+	socketName := "./session_test.sock"
+
+	l := startDummyServer(t, "unix", socketName)
 	defer l.Close()
 
-	conn, err := net.Dial("unix", "./echo.sock")
+	conn, err := net.Dial("unix", socketName)
 	if err != nil {
 		t.Fatalf("unexpected error connecting to server: %s", err)
 	}
