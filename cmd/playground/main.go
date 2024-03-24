@@ -22,7 +22,7 @@ func echoServer(conn net.Conn) {
 	// When the client disconnects, log the session ID and a goodbye message.
 
 	writer := json.NewEncoder(conn)
-	writer.Encode(comms.NewGreeting("123", "Hello, client!"))
+	writer.Encode(comms.NewGreeting(sessionID))
 
 	// Create a reader from the connection
 	reader := bufio.NewReader(conn)
