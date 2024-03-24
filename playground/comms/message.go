@@ -1,6 +1,8 @@
 package comms
 
-import "encoding/json"
+import (
+	"encoding/json"
+)
 
 // Message abstraction
 type Message interface {
@@ -43,7 +45,16 @@ func (m *message) Unmarshal(v interface{}) error {
 
 // MarshalJSON marshals the message into JSON data
 func (m *message) MarshalJSON() ([]byte, error) {
-	return m.raw, nil
+	if m.raw != nil {
+		return m.raw, nil
+	}
+	return json.Marshal(struct {
+		SessionID string
+		Type      string
+	}{
+		SessionID: m.sessionID,
+		Type:      m.messageType,
+	})
 }
 
 // UnmarshalJSON unmarshals the JSON data into the message
