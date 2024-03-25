@@ -25,10 +25,10 @@ func TestNewSimpleMessage(t *testing.T) {
 	b, _ := json.Marshal(m)
 	tm := make(map[string]interface{})
 	json.Unmarshal(b, &tm)
-	if expected, actual := "123", tm["SessionID"]; expected != actual {
+	if expected, actual := "123", tm["sessionID"]; expected != actual {
 		t.Errorf("session ID is not correct. expected %#v, got %#v", expected, actual)
 	}
-	if expected, actual := "test", tm["Type"]; expected != actual {
+	if expected, actual := "test", tm["type"]; expected != actual {
 		t.Errorf("type is not correct. expected %#v, got %#v", expected, actual)
 	}
 }

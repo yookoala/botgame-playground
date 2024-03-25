@@ -50,8 +50,8 @@ func (m *message) MarshalJSON() ([]byte, error) {
 		return m.raw, nil
 	}
 	return json.Marshal(struct {
-		SessionID string
-		Type      string
+		SessionID string `json:"sessionID,omitempty"`
+		Type      string `json:"type,omitempty"`
 	}{
 		SessionID: m.sessionID,
 		Type:      m.messageType,
