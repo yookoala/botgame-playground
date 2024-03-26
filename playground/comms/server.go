@@ -93,6 +93,9 @@ type SimpleMessageQueue struct {
 // to adding session.
 func (smq *SimpleMessageQueue) Start(mh MessageHandler, mw MessageWriter) {
 
+	// Create a new context with the session collection.
+	ctx := WithSessionCollection(context.Background(), smq.sc)
+
 	// When every session is added to the collection, start a goroutine
 	// that reads messages from the session and send them to the message.
 	//
@@ -123,8 +126,7 @@ func (smq *SimpleMessageQueue) Start(mh MessageHandler, mw MessageWriter) {
 
 					// Fan-in messages to a single queue.
 					mq <- ContextMessage{
-						// TODO: maybe inherit other context from elsewhere instead of background?
-						Context: WithSessionID(context.Background(), s.ID()),
+						Context: WithSessionID(ctx, s.ID()),
 						Message: m,
 					}
 				}

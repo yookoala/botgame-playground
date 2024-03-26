@@ -27,14 +27,11 @@ type dummyGame struct {
 	player1 *comms.Session
 	player2 *comms.Session
 
-	sc comms.SessionCollection
-
 	lock *sync.Mutex
 }
 
-func NewDummyGame(sc comms.SessionCollection) *dummyGame {
+func NewDummyGame() *dummyGame {
 	return &dummyGame{
-		sc:   sc,
 		lock: &sync.Mutex{},
 	}
 }
@@ -46,16 +43,17 @@ func (g *dummyGame) HandleMessage(ctx context.Context, min comms.Message, mw com
 	}
 	log.Printf("received message: %s", min)
 
-	// Resolve session id from context.
+	// Resolve context variables.
+	sc := comms.GetSessionCollection(ctx)
 	sessionID := comms.GetSessionID(ctx)
 
 	switch g.stage {
 	case GameStageWaiting:
 		// TODO: more sophisticated player joinning request / response.
-		if g.player1 == nil && g.sc.Has(sessionID) {
+		if g.player1 == nil && sc.Has(sessionID) {
 			log.Printf("adding session as player 1: %s", sessionID)
 			g.lock.Lock()
-			g.player1 = g.sc.Get(sessionID)
+			g.player1 = sc.Get(sessionID)
 			g.lock.Unlock()
 			resp, err := comms.NewMessageFromJSONString(fmt.Sprintf(
 				`{
@@ -85,10 +83,10 @@ func (g *dummyGame) HandleMessage(ctx context.Context, min comms.Message, mw com
 			log.Printf("response send to player 1: %s", resp)
 		}
 
-		if g.player2 == nil && g.sc.Has(sessionID) {
+		if g.player2 == nil && sc.Has(sessionID) {
 			log.Printf("adding session as player 2: %s", sessionID)
 			g.lock.Lock()
-			g.player2 = g.sc.Get(sessionID)
+			g.player2 = sc.Get(sessionID)
 			g.lock.Unlock()
 			resp, err := comms.NewMessageFromJSONString(fmt.Sprintf(
 				`{
@@ -179,14 +177,13 @@ func main() {
 		}
 	}()
 
-	sc := comms.NewSessionCollection()
-
 	// Prepare the input (mq) and output (mw) ends of the game.
+	sc := comms.NewSessionCollection()
 	mq := comms.NewSimpleMessageQueue(sc, 0) // Fan-in session messages
 	mw := comms.NewSimpleMessageBroker(sc)   // Broke messages to sessions
 
 	// Compose the game with the input and output ends.
-	mq.Start(NewDummyGame(sc), mw)
+	mq.Start(NewDummyGame(), mw)
 
 	// Start passing socket request to the message queue.
 	comms.StartService(l, mq)
