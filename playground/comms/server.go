@@ -176,6 +176,9 @@ func (smq *SimpleMessageQueue) HandleSession(s *Session) error {
 
 // NewSimpleMessageQueue creates a new SimpleMessageQueue.
 //
+// This is for game server to fan-in incoming messages from
+// multiple sessions into a single queue.
+//
 // bufferSize specify the size of the buffer for the message queue.
 // small buffer will block reading from client. A non-zero positive number
 // in buffer will allow client messages to read through before previous
@@ -196,6 +199,9 @@ type SimpleMessageBroker struct {
 }
 
 // NewSimpleMessageBroker creates a new SimpleMessageRouter
+//
+// This is for game server to distribute outgoing messages to
+// different sessions.
 func NewSimpleMessageBroker(sessions SessionCollection) *SimpleMessageBroker {
 	return &SimpleMessageBroker{
 		sessions: sessions,
