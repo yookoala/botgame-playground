@@ -31,13 +31,26 @@ func main() {
 	}
 	defer conn.Close()
 
-	sess, m, err := comms.NewSessionFromConn(conn)
+	sess := comms.NewSession("", conn)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	// Print the received greeting message
-	log.Printf("Received: %v\n", m)
+	// Annonce join game
+	err = sess.WriteMessage(comms.MustMessage(comms.NewMessageFromJSONString(`{
+		"type": "request",
+		"request": "join"
+	}`)))
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// Read first server response
+	m, err := sess.ReadMessage()
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Printf("Server response: %s\n", m)
 
 	// Listen to OS signals
 	c := make(chan os.Signal, 1)
@@ -53,8 +66,19 @@ func main() {
 				fmt.Printf("Received signal: %s\n", sig.String())
 			}
 		case err := <-waitErrorOnce(func() error {
+			m, err := sess.ReadMessage()
+			if err != nil {
+				return err
+			}
+			fmt.Printf("Server message: %s\n", m)
+			return nil
+		}):
+			if err == nil {
+				continue
+			}
+		case err := <-waitErrorOnce(func() error {
 			return sess.WriteMessage(comms.MustMessage(comms.NewMessageFromJSONString(
-				fmt.Sprintf(`{"sessionID": "%s", "type":"message","data":"Hello, server!"}`, sess.ID()),
+				fmt.Sprintf(`{"sessionID": "%s", "type":"request", "request":"ping"}`, sess.ID()),
 			)))
 		}):
 			if err == nil {

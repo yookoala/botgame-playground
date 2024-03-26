@@ -1,54 +1,147 @@
 package main
 
 import (
+	"context"
 	"fmt"
-	"io"
 	"log"
 	"net"
 	"os"
 	"os/signal"
+	"sync"
 
 	"github.com/yookoala/botgame-playground/playground/comms"
 )
 
-func newDummyServer(game *dummyGame) func(*comms.Session) error {
-	return func(sess *comms.Session) error {
-		defer sess.Close()
-		log.Printf("Session started: sessionID=%s", sess.ID())
-		sess.WriteMessage(comms.NewGreeting(sess.ID()))
+type GameStage int
 
-		// TODO: make sure this is safe for concurrency
-		if game.player1Session == nil {
-			log.Printf("accept session as player 1: %s", sess.ID())
-			game.player1Session = sess
-			sess.WriteMessage(comms.NewSimpleMessage(sess.ID(), "accept_player"))
-		} else if game.player2Session == nil {
-			log.Printf("accept session as player 2: %s", sess.ID())
-			game.player2Session = sess
-			sess.WriteMessage(comms.NewSimpleMessage(sess.ID(), "accept_player"))
-		} else {
-			log.Printf("game room full. not accepting session: %s", sess.ID())
-			sess.WriteMessage(comms.NewSimpleMessage(sess.ID(), "game_full"))
-			sess.Close()
-			return nil
-		}
+const (
+	GameStageWaiting GameStage = iota
+	GameStageSetup
+	GameStagePlaying
+	GameStageEnded
+)
 
-		for {
-			m, err := sess.ReadMessage()
-			if err != nil {
-				// Check if error is eof
-				if err == io.EOF {
-					log.Printf("Client disconnecting (sessionID=%s)", sess.ID())
-				} else {
-					log.Printf("Error reading message: %v (sessionID=%s)", err, sess.ID())
-				}
-				break
-			}
-			log.Printf("Server received from session (sessionID=%s): %v", sess.ID(), m)
-		}
-		log.Printf("Client disconnected (sessionID=%s)", sess.ID())
-		return nil
+type dummyGame struct {
+	stage GameStage
+
+	player1 *comms.Session
+	player2 *comms.Session
+
+	sc comms.SessionCollection
+
+	lock *sync.Mutex
+}
+
+func NewDummyGame(sc comms.SessionCollection) *dummyGame {
+	return &dummyGame{
+		sc:   sc,
+		lock: &sync.Mutex{},
 	}
+}
+
+func (g *dummyGame) HandleMessage(ctx context.Context, min comms.Message, mw comms.MessageWriter) error {
+
+	if min.Type() != "request" {
+		return fmt.Errorf("invalid request type: %v", min.Type())
+	}
+	log.Printf("received message: %s", min)
+
+	// Resolve session id from context.
+	sessionID := comms.GetSessionID(ctx)
+
+	switch g.stage {
+	case GameStageWaiting:
+		// TODO: more sophisticated player joinning request / response.
+		if g.player1 == nil && g.sc.Has(sessionID) {
+			log.Printf("adding session as player 1: %s", sessionID)
+			g.lock.Lock()
+			g.player1 = g.sc.Get(sessionID)
+			g.lock.Unlock()
+			resp, err := comms.NewMessageFromJSONString(fmt.Sprintf(
+				`{
+					"type": "response",
+					"sessionID": %#v,
+					"playerID": "player1",
+					"response": "success",
+					"code": 200,
+					"message": "You have joined the game."
+				}`,
+				sessionID,
+			))
+			if err != nil {
+				log.Printf("error creating response message: %s", err)
+				return err
+			}
+
+			err = mw.WriteMessage(resp)
+			if err != nil {
+				log.Printf("error sending response message: %s", err)
+				g.lock.Lock()
+				g.player1 = nil // unset player1
+				g.lock.Unlock()
+				return err
+			}
+
+			log.Printf("response send to player 1: %s", resp)
+		}
+
+		if g.player2 == nil && g.sc.Has(sessionID) {
+			log.Printf("adding session as player 2: %s", sessionID)
+			g.lock.Lock()
+			g.player2 = g.sc.Get(sessionID)
+			g.lock.Unlock()
+			resp, err := comms.NewMessageFromJSONString(fmt.Sprintf(
+				`{
+					"type": "response",
+					"sessionID": %#v,
+					"playerID": "player2",
+					"response": "success",
+					"code": 200,
+					"message": "You have joined the game."
+				}`,
+				sessionID,
+			))
+			if err != nil {
+				log.Printf("error creating response message: %s", err)
+				return err
+			}
+
+			err = mw.WriteMessage(resp)
+			if err != nil {
+				log.Printf("error sending response message: %s", err)
+				g.lock.Lock()
+				g.player2 = nil // unset player1
+				g.lock.Unlock()
+				return err
+			}
+
+			log.Printf("response send to player 1: %s", resp)
+		}
+
+		log.Printf("still here: %#v, %#v", g.player1, g.player2)
+
+		// After both player has joinned and all setup done
+		// start accepting game setup request.
+		if g.player1 != nil && g.player2 != nil {
+			log.Print("move on to setup stage")
+			mw.WriteMessage(comms.MustMessage(comms.NewMessageFromJSONString(`{
+				"type": "event",
+				"event": "accept_setup"
+			}`)))
+			g.stage = GameStageSetup
+		}
+
+	case GameStageSetup:
+		// TODO: implement me
+		// only echoing the message for now
+		log.Printf("setup: received message: %s", min)
+		mw.WriteMessage(comms.MustMessage(comms.NewMessageFromJSONString(fmt.Sprintf(`{
+			"type": "response",
+			"sessionID": %#v,
+			"response": "pong"
+		}`, sessionID))))
+	}
+	return nil
 }
 
 func main() {
@@ -86,6 +179,15 @@ func main() {
 		}
 	}()
 
-	game := &dummyGame{}
-	comms.StartServer(l, comms.SessionHandlerFunc(newDummyServer(game)))
+	sc := comms.NewSessionCollection()
+
+	// Prepare the input (mq) and output (mw) ends of the game.
+	mq := comms.NewSimpleMessageQueue(sc, 0) // Fan-in session messages
+	mw := comms.NewSimpleMessageBroker(sc)   // Broke messages to sessions
+
+	// Compose the game with the input and output ends.
+	mq.Start(NewDummyGame(sc), mw)
+
+	// Start passing socket request to the message queue.
+	comms.StartService(l, mq)
 }
