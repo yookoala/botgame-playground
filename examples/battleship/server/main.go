@@ -65,8 +65,8 @@ func (g *dummyGame) HandleMessage(ctx context.Context, min comms.Message, mw com
 				`{
 					"type": "response",
 					"sessionID": %#v,
-					"playerID": "player1",
 					"response": "success",
+					"data": "player1",
 					"code": 200,
 					"message": "You have joined the game."
 				}`,
@@ -101,8 +101,8 @@ func (g *dummyGame) HandleMessage(ctx context.Context, min comms.Message, mw com
 				`{
 					"type": "response",
 					"sessionID": %#v,
-					"playerID": "player2",
 					"response": "success",
+					"data": "player2",
 					"code": 200,
 					"message": "You have joined the game."
 				}`,
@@ -124,8 +124,6 @@ func (g *dummyGame) HandleMessage(ctx context.Context, min comms.Message, mw com
 
 			log.Printf("response send to player 1: %s", resp)
 		}
-
-		log.Printf("still here: %#v, %#v", g.player1, g.player2)
 
 		// After both player has joinned and all setup done
 		// start accepting game setup request.
