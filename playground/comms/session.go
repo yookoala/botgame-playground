@@ -3,6 +3,7 @@ package comms
 import (
 	"bufio"
 	"encoding/json"
+	"fmt"
 	"io"
 )
 
@@ -112,4 +113,48 @@ type SessionHandlerFunc func(s *Session) error
 // HandleSession calls f(s)
 func (f SessionHandlerFunc) HandleSession(s *Session) error {
 	return f(s)
+}
+
+// SessionHandler represents a collection of sessions.
+type SessionCollection struct {
+	sessions map[string]*Session
+}
+
+// NewSessionCollection creates a new session collection.
+func NewSessionCollection() *SessionCollection {
+	return &SessionCollection{sessions: make(map[string]*Session)}
+}
+
+// Has checks if a session exists in the collection.
+func (sc *SessionCollection) Has(id string) bool {
+	_, ok := sc.sessions[id]
+	return ok
+}
+
+// Add adds a session to the collection.
+func (sc *SessionCollection) Add(s *Session) error {
+	if sc.Has(s.ID()) {
+		return fmt.Errorf("session %s already exists", s.ID())
+	}
+	sc.sessions[s.ID()] = s
+	return nil
+}
+
+// Len returns the size of the collection.
+func (sc *SessionCollection) Len() int {
+	return len(sc.sessions)
+}
+
+// Remove removes a session from the collection.
+func (sc *SessionCollection) Remove(id string) {
+	delete(sc.sessions, id)
+}
+
+// Get returns a session from the collection.
+func (sc *SessionCollection) Get(id string) *Session {
+	s, ok := sc.sessions[id]
+	if !ok {
+		return nil
+	}
+	return s
 }

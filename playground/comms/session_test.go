@@ -3,6 +3,7 @@ package comms_test
 import (
 	"bufio"
 	"encoding/json"
+	"io"
 	"log"
 	"net"
 	"sync"
@@ -92,4 +93,70 @@ func TestSessionSymultanousIO(t *testing.T) {
 
 	start.Done()
 	end.Wait()
+}
+
+func TestSessionCollection(t *testing.T) {
+	sc := comms.NewSessionCollection()
+	if sc == nil {
+		t.Fatalf("unexpected nil session collection")
+	}
+
+	var dummyConn io.ReadWriteCloser
+
+	// New dummy session for test
+	s1 := comms.NewSession("1", dummyConn)
+
+	// Test if session collection is empty
+	if expected, actual := false, sc.Has("1"); expected != actual {
+		t.Logf("expected %#v, got %#v", expected, actual)
+		t.Fail()
+	}
+	if expected, actual := (*comms.Session)(nil), sc.Get("1"); expected != actual {
+		t.Logf("expected %#v, got %#v", expected, actual)
+		t.Fail()
+	}
+	if expected, actual := 0, sc.Len(); expected != actual {
+		t.Logf("expected %#v, got %#v", expected, actual)
+		t.Fail()
+	}
+
+	// Test adding a session to the collection.
+	if err := sc.Add(s1); err != nil {
+		t.Logf("unexpected error adding session to collection: %#v", err)
+		t.Fail()
+	}
+	if expected, actual := true, sc.Has("1"); expected != actual {
+		t.Logf("expected %#v, got %#v", expected, actual)
+		t.Fail()
+	}
+	if expected, actual := s1, sc.Get("1"); expected != actual {
+		t.Logf("expected %#v, got %#v", expected, actual)
+		t.Fail()
+	}
+	if expected, actual := 1, sc.Len(); expected != actual {
+		t.Logf("expected %#v, got %#v", expected, actual)
+		t.Fail()
+	}
+
+	// Test to add another session with duplicated id
+	s1b := comms.NewSession("1", dummyConn)
+	if err := sc.Add(s1b); err == nil {
+		t.Logf("expected error adding session with duplicated id")
+		t.Fail()
+	}
+
+	// Test removing session from collection.
+	sc.Remove("1")
+	if expected, actual := false, sc.Has("1"); expected != actual {
+		t.Logf("expected %#v, got %#v", expected, actual)
+		t.Fail()
+	}
+	if expected, actual := (*comms.Session)(nil), sc.Get("1"); expected != actual {
+		t.Logf("expected %#v, got %#v", expected, actual)
+		t.Fail()
+	}
+	if expected, actual := 0, sc.Len(); expected != actual {
+		t.Logf("expected %#v, got %#v", expected, actual)
+		t.Fail()
+	}
 }
