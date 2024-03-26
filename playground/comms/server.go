@@ -111,18 +111,19 @@ func (smq *SimpleMessageQueue) Start(mh MessageHandler, mw MessageWriter) {
 					// Terminate the reading loop.
 					return
 				default:
-					log.Printf("SimpleMessageQueue pending message from session: %s", s.ID())
+					//log.Printf("SimpleMessageQueue pending message from session: %s", s.ID())
 					m, err := s.ReadMessage()
 					if err == io.EOF {
 						// Session closed. Terminate reading loop.
 						log.Printf("SimpleMessageQueue session closed: %s", s.ID())
+						s.Close()
 						return
 					}
 					if err != nil {
 						// Unexpected error in reading message. Log and terminate reading loop.
 						return
 					}
-					log.Printf("SimpleMessageQueue got message from session: %s, %s", s.ID(), m)
+					//log.Printf("SimpleMessageQueue got message from session: %s, %s", s.ID(), m)
 
 					// Fan-in messages to a single queue.
 					mq <- ContextMessage{
@@ -207,21 +208,22 @@ func NewSimpleMessageBroker(sessions SessionCollection) *SimpleMessageBroker {
 // Response are sent to the specified session id. Events are broadcasted to all
 // sessions.
 func (r *SimpleMessageBroker) WriteMessage(m Message) error {
-	log.Printf("SimpleMessageBroker prepare to broke message: %s", m)
+	//log.Printf("SimpleMessageBroker prepare to broke message: %s", m)
 	if m.Type() == "response" {
-		log.Printf("SimpleMessageBroker will send response to session: %s, message: %s", m.SessionID(), m)
+		// log.Printf("SimpleMessageBroker will send response to session: %s, message: %s", m.SessionID(), m)
 		sess := r.sessions.Get(m.SessionID())
 		if sess == nil {
-			log.Printf("SimpleMessageBroker session not found: %s", m.SessionID())
+			//log.Printf("SimpleMessageBroker session not found: %s", m.SessionID())
 			return fmt.Errorf("session %s not found", m.SessionID())
 		}
 		sess.WriteMessage(m)
 		return nil
 	}
 	if m.Type() == "event" {
-		log.Printf("SimpleMessageBroker will broadcast event to all sessions, message: %s", m)
+		log.Printf("SimpleMessageBroker will broadcast event to all sessions (len=%d), message: %s", r.sessions.Len(), m)
 		errs := NewRouterErrorCollection()
 		r.sessions.Map(func(sess *Session) {
+			log.Printf("SimpleMessageBroker: send to session %s, message: %s", sess.ID(), m)
 			err := sess.WriteMessage(m)
 			if err != nil {
 				errs.Add(err)

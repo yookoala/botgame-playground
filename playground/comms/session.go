@@ -59,6 +59,8 @@ type Session struct {
 
 	mr MessageReader
 	mw MessageWriter
+
+	onClose func(*Session)
 }
 
 // NewSession creates a new Session
@@ -98,9 +100,24 @@ func (s *Session) WriteMessage(m Message) error {
 	return s.mw.WriteMessage(m)
 }
 
+// OnClose sets a callback function to be called when the session is closed.
+func (s *Session) OnClose(f func(*Session)) *Session {
+	s.onClose = f
+	return s
+}
+
 // Close closes the session
-func (s *Session) Close() error {
-	return s.conn.Close()
+func (s *Session) Close() (err error) {
+	if s.conn != nil {
+		err = s.conn.Close()
+		s.conn = nil
+	}
+	if s.onClose != nil {
+		// Run the onClose callback.
+		s.onClose(s)
+	}
+	s.onClose = nil // remove reference to callback for gc
+	return
 }
 
 // SessionHandler handles a session.
@@ -127,11 +144,14 @@ type SessionCollection interface {
 	// OnAdd registers a callback function to be called when a session is added.
 	OnAdd(f func(*Session))
 
-	// Len returns the size of the collection.
-	Len() int
-
 	// Remove removes a session from the collection.
 	Remove(id string)
+
+	// OnRemove registers a callback function to be called when a session is removed.
+	OnRemove(f func(*Session))
+
+	// Len returns the size of the collection.
+	Len() int
 
 	// Get returns a session from the collection.
 	Get(id string) *Session
@@ -145,9 +165,10 @@ type sessionCollection struct {
 	sessions map[string]*Session
 	lock     *sync.RWMutex
 
-	toAdd     chan *Session
-	onAdd     []func(*Session)
-	onAddLock *sync.Mutex
+	onAdd    []func(*Session)
+	onRemove []func(*Session)
+
+	callbackLock *sync.RWMutex
 }
 
 // NewSessionCollection creates a new session collection.
@@ -156,9 +177,10 @@ func NewSessionCollection() SessionCollection {
 		sessions: make(map[string]*Session),
 		lock:     &sync.RWMutex{},
 
-		toAdd:     make(chan *Session),
-		onAdd:     []func(*Session){},
-		onAddLock: &sync.Mutex{},
+		onAdd:    []func(*Session){},
+		onRemove: []func(*Session){},
+
+		callbackLock: &sync.RWMutex{},
 	}
 }
 
@@ -179,16 +201,26 @@ func (sc *sessionCollection) Add(s *Session) error {
 
 	// Add session to collection.
 	sc.lock.Lock()
+	s.OnClose(sc.onSessionClose)
 	sc.sessions[s.ID()] = s
 	sc.lock.Unlock()
 
 	// Running onAdd subscribers.
-	sc.onAddLock.Lock()
+	sc.callbackLock.RLock()
 	for _, f := range sc.onAdd {
 		f(s)
 	}
-	sc.onAddLock.Unlock()
+	sc.callbackLock.RUnlock()
 	return nil
+}
+
+func (sc *sessionCollection) onSessionClose(s *Session) {
+	sc.Remove(s.ID())
+	sc.callbackLock.Lock()
+	defer sc.callbackLock.Unlock()
+	for _, f := range sc.onRemove {
+		f(s)
+	}
 }
 
 // OnAdd registers a callback function to be called when a session is added.
@@ -196,9 +228,19 @@ func (sc *sessionCollection) Add(s *Session) error {
 // The callback function is called with the session that is added.
 // Previously added sessions does not trigger the callback registered afterwards.
 func (sc *sessionCollection) OnAdd(f func(*Session)) {
-	sc.onAddLock.Lock()
+	sc.callbackLock.Lock()
 	sc.onAdd = append(sc.onAdd, f)
-	sc.onAddLock.Unlock()
+	sc.callbackLock.Unlock()
+}
+
+// OnRemove registers a callback function to be called when a session is removed.
+//
+// The callback function is called with the session that is removed.
+// Previously removed sessions does not trigger the callback registered afterwards.
+func (sc *sessionCollection) OnRemove(f func(*Session)) {
+	sc.callbackLock.Lock()
+	sc.onRemove = append(sc.onRemove, f)
+	sc.callbackLock.Unlock()
 }
 
 // Len returns the size of the collection.
