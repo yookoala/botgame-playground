@@ -230,6 +230,7 @@ func (sc *sessionCollection) Map(f func(*Session)) {
 	sc.lock.RLock()
 	defer sc.lock.RUnlock()
 	for _, s := range sc.sessions {
-		f(s)
+		// Start a goroutine to handle each session.
+		go f(s)
 	}
 }
