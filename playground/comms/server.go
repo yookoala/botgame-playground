@@ -46,3 +46,17 @@ func StartServer(listener net.Listener, sh SessionHandler) {
 		go sh.HandleSession(NewSession(sessionID, conn))
 	}
 }
+
+// MessageWriter represents a writer that can write a message.
+type MessageHandler interface {
+	HandleMessage(m Message, out MessageWriter) error
+}
+
+// MessageWriter represents a writer that can write a message.
+type MessageHandlerFunc func(m Message, out MessageWriter) error
+
+// HandleMessage calls the underlying function.
+// Implements MessageHandler interface.
+func (f MessageHandlerFunc) HandleMessage(m Message, out MessageWriter) error {
+	return f(m, out)
+}
