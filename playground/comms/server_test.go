@@ -89,6 +89,34 @@ func NewDummySessions(sessID string, size int) (serverSess, clientSess *comms.Se
 	return
 }
 
+type dummyMessageWriter struct {
+	out chan comms.Message
+}
+
+func NewDummyMessageWriter(bufferSize int) *dummyMessageWriter {
+	return &dummyMessageWriter{
+		out: make(chan comms.Message, bufferSize),
+	}
+}
+
+func (mw *dummyMessageWriter) WriteMessage(m comms.Message) error {
+	mw.out <- m
+	return nil
+}
+
+func (mw *dummyMessageWriter) ReadMessage() (comms.Message, error) {
+	m, ok := <-mw.out
+	if !ok {
+		return nil, io.EOF
+	}
+	return m, nil
+}
+
+func (mw *dummyMessageWriter) Close() error {
+	close(mw.out)
+	return nil
+}
+
 func TestNewDummySessions(t *testing.T) {
 
 	// Make sure the dummy server and client session are created correctly
@@ -136,6 +164,65 @@ func TestNewDummySessions(t *testing.T) {
 	}
 	if m.Type() != "test:client-to-server" {
 		t.Errorf("message type is not correct. expected %#v, got %#v", "test", m.Type())
+	}
+}
+
+func TestSimpleMessageQueue(t *testing.T) {
+	sc := comms.NewSessionCollection()
+	smq := comms.NewSimpleMessageQueue(sc, 0)
+
+	// Dummy message writer for test.
+	dummyMW := NewDummyMessageWriter(1)
+	defer dummyMW.Close()
+
+	// Dummy session for test
+	s1, c1 := NewDummySessions("session-1", 0)
+	defer s1.Close()
+	defer c1.Close()
+	s2, c2 := NewDummySessions("session-2", 0)
+	defer s2.Close()
+	defer c2.Close()
+
+	// Add session after the queue is started
+	smq.Start(dummyMW)
+	defer smq.Stop()
+	sc.Add(s1)
+	sc.Add(s2)
+
+	// Send a message from client c1
+	err := c1.WriteMessage(comms.NewSimpleMessage("session-1", "test:client-to-server:1"))
+	if err != nil {
+		t.Fatalf("unexpected error writing message: %s", err)
+	}
+
+	// Send a message from client c2
+	err = c2.WriteMessage(comms.NewSimpleMessage("session-2", "test:client-to-server:2"))
+	if err != nil {
+		t.Fatalf("unexpected error writing message: %s", err)
+	}
+
+	// Read the first message from the message writer
+	m, err := dummyMW.ReadMessage()
+	if err != nil {
+		t.Fatalf("unexpected error reading message: %s", err)
+	}
+	if expected, actual := "session-1", m.SessionID(); expected != actual {
+		t.Errorf("message session ID is not correct. expected %#v, got %#v", expected, actual)
+	}
+	if expected, actual := "test:client-to-server:1", m.Type(); expected != actual {
+		t.Errorf("message type is not correct. expected %#v, got %#v", expected, actual)
+	}
+
+	// Read the second message from message writer
+	m, err = dummyMW.ReadMessage()
+	if err != nil {
+		t.Fatalf("unexpected error reading message: %s", err)
+	}
+	if expected, actual := "session-2", m.SessionID(); expected != actual {
+		t.Errorf("message session ID is not correct. expected %#v, got %#v", expected, actual)
+	}
+	if expected, actual := "test:client-to-server:2", m.Type(); expected != actual {
+		t.Errorf("message type is not correct. expected %#v, got %#v", expected, actual)
 	}
 }
 

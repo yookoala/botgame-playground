@@ -2,6 +2,7 @@ package comms
 
 import (
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"os"
@@ -60,6 +61,100 @@ type MessageHandlerFunc func(m Message, out MessageWriter) error
 // Implements MessageHandler interface.
 func (f MessageHandlerFunc) HandleMessage(m Message, out MessageWriter) error {
 	return f(m, out)
+}
+
+// SimpleMessagegQueue is a simple message queue that can be used to
+// collect all messages from a session collection, then send them to
+// a message handler.
+//
+// To simplify server implementations. Messages are collected and send
+// to the MessageHandler in a linear manner.
+type SimpleMessageQueue struct {
+	sc   *SessionCollection
+	mq   chan Message
+	term chan bool
+}
+
+// Start starts the message queue and start sending messages to the
+// message writer.
+//
+// The start function will block until the message queue is ready to
+// accept new session. Please do not run Start in a goroutine in parallel
+// to adding session.
+func (smq *SimpleMessageQueue) Start(mw MessageWriter) {
+
+	// When every session is added to the collection, start a goroutine
+	// that reads messages from the session and send them to the message.
+	//
+	// Terminate the goroutine when either:
+	// 1. The reader of the session is closed (EOF); or
+	// 2. The message queue is stopped
+	smq.sc.OnAdd(func(s *Session) {
+		go func(mq chan<- Message, term <-chan bool) {
+			for {
+				select {
+				case <-smq.term:
+					// Terminate the reading loop.
+					return
+				default:
+					m, err := s.ReadMessage()
+					if err == io.EOF {
+						// Session closed. Terminate reading loop.
+						return
+					}
+					if err != nil {
+						// Unexpected error in reading message. Log and terminate reading loop.
+						return
+					}
+					mq <- m // Fan-in messages to a single queue.
+				}
+			}
+		}(smq.mq, smq.term)
+	})
+
+	// Note: intentionally blocking before onAdd is correctly called.
+	//       do not run Start() in another goroutine or message might
+	//       arrive before the queue is ready. In that case, message
+	//       will be lost.
+
+	go func(mq <-chan Message, term <-chan bool) {
+		for {
+			select {
+			case <-smq.term:
+				// Terminate the message queue.
+				return
+			case m := <-smq.mq:
+				mw.WriteMessage(m)
+			}
+		}
+	}(smq.mq, smq.term)
+}
+
+// Stop stops the message queue.
+func (smq *SimpleMessageQueue) Stop() {
+	select {
+	case <-smq.term:
+		// Already stopping or stopped. Do nothing.
+		return
+	default:
+		close(smq.term)
+		close(smq.mq)
+	}
+}
+
+// NewSimpleMessageQueue creates a new SimpleMessageQueue.
+//
+// bufferSize specify the size of the buffer for the message queue.
+// small buffer will block reading from client. A non-zero positive number
+// in buffer will allow client messages to read through before previous
+// messages are processed.
+func NewSimpleMessageQueue(sc *SessionCollection, bufferSize int) *SimpleMessageQueue {
+	mq := make(chan Message, bufferSize)
+	return &SimpleMessageQueue{
+		sc:   sc,
+		mq:   mq,
+		term: make(chan bool),
+	}
 }
 
 // SimpleMessageBroker helps route / multicast Message to different
