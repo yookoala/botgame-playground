@@ -1,6 +1,7 @@
 package comms
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"log"
@@ -25,10 +26,11 @@ func getNewSessionIDs() <-chan string {
 	return ch
 }
 
-// StartServer creates a new server loop and start listening to the listener.
-func StartServer(listener net.Listener, sh SessionHandler) {
+// StartService creates a new server loop and start listening to the listener.
+func StartService(listener net.Listener, sh SessionHandler) {
 	defer listener.Close()
 
+	log.Printf("start listening on %s", listener.Addr().String())
 	newSessionIDs := getNewSessionIDs()
 	for {
 		sessionID := <-newSessionIDs
@@ -46,22 +48,29 @@ func StartServer(listener net.Listener, sh SessionHandler) {
 			}
 		}
 
-		go sh.HandleSession(NewSession(sessionID, conn))
+		sess := NewSession(sessionID, conn)
+		log.Printf("received new session to handle: %s", sess.ID())
+		go sh.HandleSession(sess)
 	}
 }
 
 // MessageWriter represents a writer that can write a message.
 type MessageHandler interface {
-	HandleMessage(m Message, out MessageWriter) error
+	HandleMessage(ctx context.Context, m Message, out MessageWriter) error
 }
 
 // MessageWriter represents a writer that can write a message.
-type MessageHandlerFunc func(m Message, out MessageWriter) error
+type MessageHandlerFunc func(ctx context.Context, m Message, out MessageWriter) error
 
 // HandleMessage calls the underlying function.
 // Implements MessageHandler interface.
-func (f MessageHandlerFunc) HandleMessage(m Message, out MessageWriter) error {
-	return f(m, out)
+func (f MessageHandlerFunc) HandleMessage(ctx context.Context, m Message, out MessageWriter) error {
+	return f(ctx, m, out)
+}
+
+type ContextMessage struct {
+	Context context.Context
+	Message Message
 }
 
 // SimpleMessagegQueue is a simple message queue that can be used to
@@ -72,7 +81,7 @@ func (f MessageHandlerFunc) HandleMessage(m Message, out MessageWriter) error {
 // to the MessageHandler in a linear manner.
 type SimpleMessageQueue struct {
 	sc   SessionCollection
-	mq   chan Message
+	mq   chan ContextMessage
 	term chan bool
 }
 
@@ -82,7 +91,7 @@ type SimpleMessageQueue struct {
 // The start function will block until the message queue is ready to
 // accept new session. Please do not run Start in a goroutine in parallel
 // to adding session.
-func (smq *SimpleMessageQueue) Start(mw MessageWriter) {
+func (smq *SimpleMessageQueue) Start(mh MessageHandler, mw MessageWriter) {
 
 	// When every session is added to the collection, start a goroutine
 	// that reads messages from the session and send them to the message.
@@ -91,23 +100,33 @@ func (smq *SimpleMessageQueue) Start(mw MessageWriter) {
 	// 1. The reader of the session is closed (EOF); or
 	// 2. The message queue is stopped
 	smq.sc.OnAdd(func(s *Session) {
-		go func(mq chan<- Message, term <-chan bool) {
+		log.Printf("SimpleMessageQueue get session added: %s", s.ID())
+		go func(mq chan<- ContextMessage, term <-chan bool) {
 			for {
 				select {
 				case <-smq.term:
 					// Terminate the reading loop.
 					return
 				default:
+					log.Printf("SimpleMessageQueue pending message from session: %s", s.ID())
 					m, err := s.ReadMessage()
 					if err == io.EOF {
 						// Session closed. Terminate reading loop.
+						log.Printf("SimpleMessageQueue session closed: %s", s.ID())
 						return
 					}
 					if err != nil {
 						// Unexpected error in reading message. Log and terminate reading loop.
 						return
 					}
-					mq <- m // Fan-in messages to a single queue.
+					log.Printf("SimpleMessageQueue got message from session: %s, %s", s.ID(), m)
+
+					// Fan-in messages to a single queue.
+					mq <- ContextMessage{
+						// TODO: maybe inherit other context from elsewhere instead of background?
+						Context: WithSessionID(context.Background(), s.ID()),
+						Message: m,
+					}
 				}
 			}
 		}(smq.mq, smq.term)
@@ -118,17 +137,17 @@ func (smq *SimpleMessageQueue) Start(mw MessageWriter) {
 	//       arrive before the queue is ready. In that case, message
 	//       will be lost.
 
-	go func(mq <-chan Message, term <-chan bool) {
+	go func(mq <-chan ContextMessage, term <-chan bool, mh MessageHandler, mw MessageWriter) {
 		for {
 			select {
 			case <-smq.term:
 				// Terminate the message queue.
 				return
-			case m := <-smq.mq:
-				mw.WriteMessage(m)
+			case cm := <-smq.mq:
+				mh.HandleMessage(cm.Context, cm.Message, mw)
 			}
 		}
-	}(smq.mq, smq.term)
+	}(smq.mq, smq.term, mh, mw)
 }
 
 // Stop stops the message queue.
@@ -138,9 +157,18 @@ func (smq *SimpleMessageQueue) Stop() {
 		// Already stopping or stopped. Do nothing.
 		return
 	default:
+		log.Printf("Stopping SimpleMessageQueue...")
 		close(smq.term)
 		close(smq.mq)
 	}
+}
+
+// HandleSession adds a session to the message queue.
+//
+// Implements SessionHandler interface.
+func (smq *SimpleMessageQueue) HandleSession(s *Session) error {
+	log.Printf("SimpleMessageQueue add session to queue: %s", s.ID())
+	return smq.sc.Add(s)
 }
 
 // NewSimpleMessageQueue creates a new SimpleMessageQueue.
@@ -150,7 +178,7 @@ func (smq *SimpleMessageQueue) Stop() {
 // in buffer will allow client messages to read through before previous
 // messages are processed.
 func NewSimpleMessageQueue(sc SessionCollection, bufferSize int) *SimpleMessageQueue {
-	mq := make(chan Message, bufferSize)
+	mq := make(chan ContextMessage, bufferSize)
 	return &SimpleMessageQueue{
 		sc:   sc,
 		mq:   mq,
@@ -177,15 +205,19 @@ func NewSimpleMessageBroker(sessions SessionCollection) *SimpleMessageBroker {
 // Response are sent to the specified session id. Events are broadcasted to all
 // sessions.
 func (r *SimpleMessageBroker) WriteMessage(m Message) error {
+	log.Printf("SimpleMessageBroker prepare to broke message: %s", m)
 	if m.Type() == "response" {
+		log.Printf("SimpleMessageBroker will send response to session: %s, message: %s", m.SessionID(), m)
 		sess := r.sessions.Get(m.SessionID())
 		if sess == nil {
+			log.Printf("SimpleMessageBroker session not found: %s", m.SessionID())
 			return fmt.Errorf("session %s not found", m.SessionID())
 		}
 		sess.WriteMessage(m)
 		return nil
 	}
 	if m.Type() == "event" {
+		log.Printf("SimpleMessageBroker will broadcast event to all sessions, message: %s", m)
 		errs := NewRouterErrorCollection()
 		r.sessions.Map(func(sess *Session) {
 			err := sess.WriteMessage(m)

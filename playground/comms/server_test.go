@@ -1,7 +1,9 @@
 package comms_test
 
 import (
+	"context"
 	"io"
+	"sync"
 	"testing"
 
 	"github.com/yookoala/botgame-playground/playground/comms"
@@ -89,32 +91,29 @@ func NewDummySessions(sessID string, size int) (serverSess, clientSess *comms.Se
 	return
 }
 
-type dummyMessageWriter struct {
-	out chan comms.Message
+type dummyMessageHandler struct {
+	messages []comms.Message
+	wg       *sync.WaitGroup
 }
 
-func NewDummyMessageWriter(bufferSize int) *dummyMessageWriter {
-	return &dummyMessageWriter{
-		out: make(chan comms.Message, bufferSize),
-	}
-}
-
-func (mw *dummyMessageWriter) WriteMessage(m comms.Message) error {
-	mw.out <- m
+func (mh *dummyMessageHandler) HandleMessage(ctx context.Context, m comms.Message, mw comms.MessageWriter) error {
+	mh.messages = append(mh.messages, m)
+	mh.wg.Done()
+	// do not emit any message.
 	return nil
 }
 
-func (mw *dummyMessageWriter) ReadMessage() (comms.Message, error) {
-	m, ok := <-mw.out
-	if !ok {
-		return nil, io.EOF
-	}
-	return m, nil
+func (mh *dummyMessageHandler) Wait() {
+	mh.wg.Wait()
 }
 
-func (mw *dummyMessageWriter) Close() error {
-	close(mw.out)
-	return nil
+func newDummyMessageHandler(wait int) *dummyMessageHandler {
+	wg := &sync.WaitGroup{}
+	wg.Add(wait)
+	return &dummyMessageHandler{
+		messages: make([]comms.Message, 0),
+		wg:       wg,
+	}
 }
 
 func TestNewDummySessions(t *testing.T) {
@@ -171,10 +170,6 @@ func TestSimpleMessageQueue(t *testing.T) {
 	sc := comms.NewSessionCollection()
 	smq := comms.NewSimpleMessageQueue(sc, 0)
 
-	// Dummy message writer for test.
-	dummyMW := NewDummyMessageWriter(1)
-	defer dummyMW.Close()
-
 	// Dummy session for test
 	s1, c1 := NewDummySessions("session-1", 0)
 	defer s1.Close()
@@ -184,7 +179,8 @@ func TestSimpleMessageQueue(t *testing.T) {
 	defer c2.Close()
 
 	// Add session after the queue is started
-	smq.Start(dummyMW)
+	mh := newDummyMessageHandler(2)
+	smq.Start(mh, nil) // dummy message handle won't be using the message writer.
 	defer smq.Stop()
 	sc.Add(s1)
 	sc.Add(s2)
@@ -201,28 +197,18 @@ func TestSimpleMessageQueue(t *testing.T) {
 		t.Fatalf("unexpected error writing message: %s", err)
 	}
 
-	// Read the first message from the message writer
-	m, err := dummyMW.ReadMessage()
-	if err != nil {
-		t.Fatalf("unexpected error reading message: %s", err)
-	}
-	if expected, actual := "session-1", m.SessionID(); expected != actual {
-		t.Errorf("message session ID is not correct. expected %#v, got %#v", expected, actual)
-	}
-	if expected, actual := "test:client-to-server:1", m.Type(); expected != actual {
-		t.Errorf("message type is not correct. expected %#v, got %#v", expected, actual)
-	}
+	// Wait for the message handler to receive both messages
+	mh.Wait()
 
-	// Read the second message from message writer
-	m, err = dummyMW.ReadMessage()
-	if err != nil {
-		t.Fatalf("unexpected error reading message: %s", err)
+	// Check messages received
+	if want, have := 2, len(mh.messages); want != have {
+		t.Fatalf("unexpected number of messages. want %d, have %d", want, have)
 	}
-	if expected, actual := "session-2", m.SessionID(); expected != actual {
-		t.Errorf("message session ID is not correct. expected %#v, got %#v", expected, actual)
+	if want, have := "test:client-to-server:1", mh.messages[0].Type(); want != have {
+		t.Errorf("unexpected message type. want %#v, have %#v", want, have)
 	}
-	if expected, actual := "test:client-to-server:2", m.Type(); expected != actual {
-		t.Errorf("message type is not correct. expected %#v, got %#v", expected, actual)
+	if want, have := "test:client-to-server:2", mh.messages[1].Type(); want != have {
+		t.Errorf("unexpected message type. want %#v, have %#v", want, have)
 	}
 }
 
