@@ -70,7 +70,7 @@ func main() {
 			if err != nil {
 				return err
 			}
-			fmt.Printf("Server message: %s\n", m)
+			fmt.Printf("Server %s: %s\n", m.Type(), m)
 			return nil
 		}):
 			if err == nil {

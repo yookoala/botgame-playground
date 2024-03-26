@@ -188,6 +188,12 @@ func main() {
 
 	// Prepare the input (mq) and output (mw) ends of the game.
 	sc := comms.NewSessionCollection()
+	sc.OnAdd(func(s *comms.Session) {
+		log.Printf("session added: %s, current len=%d", s.ID(), sc.Len())
+	})
+	sc.OnRemove(func(s *comms.Session) {
+		log.Printf("session remove: %s, current len=%d", s.ID(), sc.Len())
+	})
 	mq := comms.NewSimpleMessageQueue(sc, 0) // Fan-in session messages
 	mw := comms.NewSimpleMessageBroker(sc)   // Broke messages to sessions
 
