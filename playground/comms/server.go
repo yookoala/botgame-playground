@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"strings"
+	"sync"
 )
 
 // getNewSessionIDs allocate a new session ID for use.
@@ -204,27 +205,35 @@ func (r *SimpleMessageBroker) WriteMessage(m Message) error {
 // RouterErrorCollection is a collection of errors. Implements error interface.
 type RouterErrorCollection struct {
 	errors []error
+	lock   *sync.Mutex
 }
 
 // NewRouterErrorCollection creates a new RouterErrorCollection
 func NewRouterErrorCollection() *RouterErrorCollection {
 	return &RouterErrorCollection{
 		errors: make([]error, 0),
+		lock:   &sync.Mutex{},
 	}
 }
 
 // Add adds an error to the collection.
 func (rec *RouterErrorCollection) Add(err error) {
+	rec.lock.Lock()
+	defer rec.lock.Unlock()
 	rec.errors = append(rec.errors, err)
 }
 
 // Len returns the number of errors in the collection.
 func (rec *RouterErrorCollection) Len() int {
+	rec.lock.Lock()
+	defer rec.lock.Unlock()
 	return len(rec.errors)
 }
 
 // Errors returns the errors in the collection.
 func (rec *RouterErrorCollection) Errors() []error {
+	rec.lock.Lock()
+	defer rec.lock.Unlock()
 	return rec.errors
 }
 
@@ -235,6 +244,8 @@ func (rec *RouterErrorCollection) Error() string {
 		return ""
 	}
 
+	rec.lock.Lock()
+	defer rec.lock.Unlock()
 	out := ""
 	for _, err := range rec.errors {
 		out += err.Error() + "\n"
