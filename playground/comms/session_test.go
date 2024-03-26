@@ -102,61 +102,60 @@ func TestSessionCollection(t *testing.T) {
 	}
 
 	var dummyConn io.ReadWriteCloser
+	var count int
+
+	// Count the number of session added, if any.
+	onAdd := func(s *comms.Session) {
+		count++
+	}
+	sc.OnAdd(onAdd)
 
 	// New dummy session for test
 	s1 := comms.NewSession("1", dummyConn)
 
 	// Test if session collection is empty
 	if expected, actual := false, sc.Has("1"); expected != actual {
-		t.Logf("expected %#v, got %#v", expected, actual)
-		t.Fail()
+		t.Errorf("expected %#v, got %#v", expected, actual)
 	}
 	if expected, actual := (*comms.Session)(nil), sc.Get("1"); expected != actual {
-		t.Logf("expected %#v, got %#v", expected, actual)
-		t.Fail()
+		t.Errorf("expected %#v, got %#v", expected, actual)
 	}
 	if expected, actual := 0, sc.Len(); expected != actual {
-		t.Logf("expected %#v, got %#v", expected, actual)
-		t.Fail()
+		t.Errorf("expected %#v, got %#v", expected, actual)
 	}
 
 	// Test adding a session to the collection.
 	if err := sc.Add(s1); err != nil {
-		t.Logf("unexpected error adding session to collection: %#v", err)
-		t.Fail()
+		t.Errorf("unexpected error adding session to collection: %#v", err)
 	}
 	if expected, actual := true, sc.Has("1"); expected != actual {
-		t.Logf("expected %#v, got %#v", expected, actual)
-		t.Fail()
+		t.Errorf("expected %#v, got %#v", expected, actual)
 	}
 	if expected, actual := s1, sc.Get("1"); expected != actual {
-		t.Logf("expected %#v, got %#v", expected, actual)
-		t.Fail()
+		t.Errorf("expected %#v, got %#v", expected, actual)
 	}
 	if expected, actual := 1, sc.Len(); expected != actual {
-		t.Logf("expected %#v, got %#v", expected, actual)
-		t.Fail()
+		t.Errorf("expected %#v, got %#v", expected, actual)
+	}
+	if expected, actual := 1, count; expected != actual {
+		t.Errorf("expected %#v, got %#v", expected, actual)
 	}
 
 	// Test to add another session with duplicated id
 	s1b := comms.NewSession("1", dummyConn)
 	if err := sc.Add(s1b); err == nil {
-		t.Logf("expected error adding session with duplicated id")
-		t.Fail()
+		t.Errorf("expected error adding session with duplicated id")
 	}
 
 	// Test removing session from collection.
 	sc.Remove("1")
 	if expected, actual := false, sc.Has("1"); expected != actual {
-		t.Logf("expected %#v, got %#v", expected, actual)
-		t.Fail()
+		t.Errorf("expected %#v, got %#v", expected, actual)
 	}
 	if expected, actual := (*comms.Session)(nil), sc.Get("1"); expected != actual {
-		t.Logf("expected %#v, got %#v", expected, actual)
-		t.Fail()
+		t.Errorf("expected %#v, got %#v", expected, actual)
 	}
 	if expected, actual := 0, sc.Len(); expected != actual {
-		t.Logf("expected %#v, got %#v", expected, actual)
-		t.Fail()
+		t.Errorf("expected %#v, got %#v", expected, actual)
 	}
 }

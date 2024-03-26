@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"sync"
 )
 
 // MessageReader reads a message from an io.Reader
@@ -118,40 +119,81 @@ func (f SessionHandlerFunc) HandleSession(s *Session) error {
 // SessionHandler represents a collection of sessions.
 type SessionCollection struct {
 	sessions map[string]*Session
+	lock     *sync.RWMutex
+
+	toAdd     chan *Session
+	onAdd     []func(*Session)
+	onAddLock *sync.Mutex
 }
 
 // NewSessionCollection creates a new session collection.
 func NewSessionCollection() *SessionCollection {
-	return &SessionCollection{sessions: make(map[string]*Session)}
+	return &SessionCollection{
+		sessions: make(map[string]*Session),
+		lock:     &sync.RWMutex{},
+
+		toAdd:     make(chan *Session),
+		onAdd:     []func(*Session){},
+		onAddLock: &sync.Mutex{},
+	}
 }
 
 // Has checks if a session exists in the collection.
 func (sc *SessionCollection) Has(id string) bool {
+	sc.lock.Lock()
+	defer sc.lock.Unlock()
 	_, ok := sc.sessions[id]
 	return ok
 }
 
 // Add adds a session to the collection.
 func (sc *SessionCollection) Add(s *Session) error {
+	// Check if ID exists.
 	if sc.Has(s.ID()) {
 		return fmt.Errorf("session %s already exists", s.ID())
 	}
+
+	// Add session to collection.
+	sc.lock.Lock()
 	sc.sessions[s.ID()] = s
+	sc.lock.Unlock()
+
+	// Running onAdd subscribers.
+	sc.onAddLock.Lock()
+	for _, f := range sc.onAdd {
+		f(s)
+	}
+	sc.onAddLock.Unlock()
 	return nil
 }
 
+// OnAdd registers a callback function to be called when a session is added.
+//
+// The callback function is called with the session that is added.
+// Previously added sessions does not trigger the callback registered afterwards.
+func (sc *SessionCollection) OnAdd(f func(*Session)) {
+	sc.onAddLock.Lock()
+	sc.onAdd = append(sc.onAdd, f)
+	sc.onAddLock.Unlock()
+}
+
 // Len returns the size of the collection.
-func (sc *SessionCollection) Len() int {
-	return len(sc.sessions)
+func (sc *SessionCollection) Len() (l int) {
+	l = len(sc.sessions)
+	return l
 }
 
 // Remove removes a session from the collection.
 func (sc *SessionCollection) Remove(id string) {
+	sc.lock.Lock()
+	defer sc.lock.Unlock()
 	delete(sc.sessions, id)
 }
 
 // Get returns a session from the collection.
 func (sc *SessionCollection) Get(id string) *Session {
+	sc.lock.RLock()
+	defer sc.lock.RUnlock()
 	s, ok := sc.sessions[id]
 	if !ok {
 		return nil
