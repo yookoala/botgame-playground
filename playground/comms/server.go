@@ -71,7 +71,7 @@ func (f MessageHandlerFunc) HandleMessage(m Message, out MessageWriter) error {
 // To simplify server implementations. Messages are collected and send
 // to the MessageHandler in a linear manner.
 type SimpleMessageQueue struct {
-	sc   *SessionCollection
+	sc   SessionCollection
 	mq   chan Message
 	term chan bool
 }
@@ -149,7 +149,7 @@ func (smq *SimpleMessageQueue) Stop() {
 // small buffer will block reading from client. A non-zero positive number
 // in buffer will allow client messages to read through before previous
 // messages are processed.
-func NewSimpleMessageQueue(sc *SessionCollection, bufferSize int) *SimpleMessageQueue {
+func NewSimpleMessageQueue(sc SessionCollection, bufferSize int) *SimpleMessageQueue {
 	mq := make(chan Message, bufferSize)
 	return &SimpleMessageQueue{
 		sc:   sc,
@@ -161,11 +161,11 @@ func NewSimpleMessageQueue(sc *SessionCollection, bufferSize int) *SimpleMessage
 // SimpleMessageBroker helps route / multicast Message to different
 // sessions. Implements MessageWriter interface.
 type SimpleMessageBroker struct {
-	sessions *SessionCollection
+	sessions SessionCollection
 }
 
 // NewSimpleMessageBroker creates a new SimpleMessageRouter
-func NewSimpleMessageBroker(sessions *SessionCollection) *SimpleMessageBroker {
+func NewSimpleMessageBroker(sessions SessionCollection) *SimpleMessageBroker {
 	return &SimpleMessageBroker{
 		sessions: sessions,
 	}
@@ -187,12 +187,12 @@ func (r *SimpleMessageBroker) WriteMessage(m Message) error {
 	}
 	if m.Type() == "event" {
 		errs := NewRouterErrorCollection()
-		for _, sess := range r.sessions.sessions {
+		r.sessions.Map(func(sess *Session) {
 			err := sess.WriteMessage(m)
 			if err != nil {
 				errs.Add(err)
 			}
-		}
+		})
 		if errs.Len() > 0 {
 			return errs
 		}

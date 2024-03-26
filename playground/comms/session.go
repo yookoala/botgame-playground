@@ -116,8 +116,32 @@ func (f SessionHandlerFunc) HandleSession(s *Session) error {
 	return f(s)
 }
 
-// SessionHandler represents a collection of sessions.
-type SessionCollection struct {
+// SessionCollection is an abstraction of a collection of sessions.
+type SessionCollection interface {
+	// Has checks if a session exists in the collection.
+	Has(id string) bool
+
+	// Add adds a session to the collection.
+	Add(s *Session) error
+
+	// OnAdd registers a callback function to be called when a session is added.
+	OnAdd(f func(*Session))
+
+	// Len returns the size of the collection.
+	Len() int
+
+	// Remove removes a session from the collection.
+	Remove(id string)
+
+	// Get returns a session from the collection.
+	Get(id string) *Session
+
+	// Map maps a callback to all sessions in the collection.
+	Map(func(*Session))
+}
+
+// sessionCollection is the default implementation of SessionCollection
+type sessionCollection struct {
 	sessions map[string]*Session
 	lock     *sync.RWMutex
 
@@ -127,8 +151,8 @@ type SessionCollection struct {
 }
 
 // NewSessionCollection creates a new session collection.
-func NewSessionCollection() *SessionCollection {
-	return &SessionCollection{
+func NewSessionCollection() SessionCollection {
+	return &sessionCollection{
 		sessions: make(map[string]*Session),
 		lock:     &sync.RWMutex{},
 
@@ -139,7 +163,7 @@ func NewSessionCollection() *SessionCollection {
 }
 
 // Has checks if a session exists in the collection.
-func (sc *SessionCollection) Has(id string) bool {
+func (sc *sessionCollection) Has(id string) bool {
 	sc.lock.Lock()
 	defer sc.lock.Unlock()
 	_, ok := sc.sessions[id]
@@ -147,7 +171,7 @@ func (sc *SessionCollection) Has(id string) bool {
 }
 
 // Add adds a session to the collection.
-func (sc *SessionCollection) Add(s *Session) error {
+func (sc *sessionCollection) Add(s *Session) error {
 	// Check if ID exists.
 	if sc.Has(s.ID()) {
 		return fmt.Errorf("session %s already exists", s.ID())
@@ -171,27 +195,27 @@ func (sc *SessionCollection) Add(s *Session) error {
 //
 // The callback function is called with the session that is added.
 // Previously added sessions does not trigger the callback registered afterwards.
-func (sc *SessionCollection) OnAdd(f func(*Session)) {
+func (sc *sessionCollection) OnAdd(f func(*Session)) {
 	sc.onAddLock.Lock()
 	sc.onAdd = append(sc.onAdd, f)
 	sc.onAddLock.Unlock()
 }
 
 // Len returns the size of the collection.
-func (sc *SessionCollection) Len() (l int) {
+func (sc *sessionCollection) Len() (l int) {
 	l = len(sc.sessions)
 	return l
 }
 
 // Remove removes a session from the collection.
-func (sc *SessionCollection) Remove(id string) {
+func (sc *sessionCollection) Remove(id string) {
 	sc.lock.Lock()
 	defer sc.lock.Unlock()
 	delete(sc.sessions, id)
 }
 
 // Get returns a session from the collection.
-func (sc *SessionCollection) Get(id string) *Session {
+func (sc *sessionCollection) Get(id string) *Session {
 	sc.lock.RLock()
 	defer sc.lock.RUnlock()
 	s, ok := sc.sessions[id]
@@ -199,4 +223,13 @@ func (sc *SessionCollection) Get(id string) *Session {
 		return nil
 	}
 	return s
+}
+
+// Map maps a callback to all sessions in the collection.
+func (sc *sessionCollection) Map(f func(*Session)) {
+	sc.lock.RLock()
+	defer sc.lock.RUnlock()
+	for _, s := range sc.sessions {
+		f(s)
+	}
 }
