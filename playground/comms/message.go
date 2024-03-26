@@ -2,6 +2,7 @@ package comms
 
 import (
 	"encoding/json"
+	"fmt"
 )
 
 // Message abstraction
@@ -81,7 +82,7 @@ func (m *message) UnmarshalJSON(b []byte) (err error) {
 func NewMessageFromJSON(b []byte) (Message, error) {
 	m := &message{}
 	if err := m.UnmarshalJSON(b); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error unmarshalling JSON string: %s, JSON: %s", err, string(b))
 	}
 	return m, nil
 }
@@ -90,7 +91,7 @@ func NewMessageFromJSON(b []byte) (Message, error) {
 func NewMessageFromJSONString(s string) (Message, error) {
 	m := &message{}
 	if err := m.UnmarshalJSON([]byte(s)); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error unmarshalling JSON string: %s, JSON: %s", err, s)
 	}
 	return m, nil
 }
