@@ -2,6 +2,7 @@ package comms
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -29,7 +30,7 @@ func (mr *messageReader) ReadMessage() (m Message, err error) {
 	if err != nil {
 		return
 	}
-	return NewMessageFromJSON(b)
+	return NewMessageFromJSON(bytes.Trim(b, "\n"))
 }
 
 // MessageWriter writes a message to an io.Writer
