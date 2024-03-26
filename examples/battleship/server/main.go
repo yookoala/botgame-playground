@@ -131,10 +131,7 @@ func (g *dummyGame) HandleMessage(ctx context.Context, min comms.Message, mw com
 		// start accepting game setup request.
 		if g.player1 != nil && g.player2 != nil {
 			log.Print("move on to setup stage")
-			mw.WriteMessage(comms.MustMessage(comms.NewMessageFromJSONString(`{
-				"type": "event",
-				"event": "accept_setup"
-			}`)))
+			mw.WriteMessage(comms.MustMessage(comms.NewMessageFromJSONString(`{"type": "event","event": "accept_setup"}`)))
 			g.stage = GameStageSetup
 		}
 
