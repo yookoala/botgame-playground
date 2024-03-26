@@ -11,25 +11,44 @@ import (
 	"github.com/yookoala/botgame-playground/playground/comms"
 )
 
-func echoServer(sess *comms.Session) error {
-	defer sess.Close()
-	log.Printf("Session started: sessionID=%s", sess.ID())
-	sess.WriteMessage(comms.NewGreeting(sess.ID()))
-	for {
-		m, err := sess.ReadMessage()
-		if err != nil {
-			// Check if error is eof
-			if err == io.EOF {
-				log.Print("Client disconnecting")
-			} else {
-				log.Printf("Error reading message: %v", err)
-			}
-			break
+func newDummyServer(game *dummyGame) func(*comms.Session) error {
+	return func(sess *comms.Session) error {
+		defer sess.Close()
+		log.Printf("Session started: sessionID=%s", sess.ID())
+		sess.WriteMessage(comms.NewGreeting(sess.ID()))
+
+		// TODO: make sure this is safe for concurrency
+		if game.player1Session == nil {
+			log.Printf("accept session as player 1: %s", sess.ID())
+			game.player1Session = sess
+			sess.WriteMessage(comms.NewSimpleMessage(sess.ID(), "accept_player"))
+		} else if game.player2Session == nil {
+			log.Printf("accept session as player 2: %s", sess.ID())
+			game.player2Session = sess
+			sess.WriteMessage(comms.NewSimpleMessage(sess.ID(), "accept_player"))
+		} else {
+			log.Printf("game room full. not accepting session: %s", sess.ID())
+			sess.WriteMessage(comms.NewSimpleMessage(sess.ID(), "game_full"))
+			sess.Close()
+			return nil
 		}
-		log.Printf("Received: %v", m)
+
+		for {
+			m, err := sess.ReadMessage()
+			if err != nil {
+				// Check if error is eof
+				if err == io.EOF {
+					log.Printf("Client disconnecting (sessionID=%s)", sess.ID())
+				} else {
+					log.Printf("Error reading message: %v (sessionID=%s)", err, sess.ID())
+				}
+				break
+			}
+			log.Printf("Server received from session (sessionID=%s): %v", sess.ID(), m)
+		}
+		log.Printf("Client disconnected (sessionID=%s)", sess.ID())
+		return nil
 	}
-	log.Println("Client disconnected")
-	return nil
 }
 
 func main() {
@@ -67,5 +86,6 @@ func main() {
 		}
 	}()
 
-	comms.StartServer(l, comms.SessionHandlerFunc(echoServer))
+	game := &dummyGame{}
+	comms.StartServer(l, comms.SessionHandlerFunc(newDummyServer(game)))
 }
