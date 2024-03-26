@@ -41,7 +41,7 @@ func (g *dummyGame) HandleMessage(ctx context.Context, min comms.Message, mw com
 	if min.Type() != "request" {
 		return fmt.Errorf("invalid request type: %v", min.Type())
 	}
-	log.Printf("received message: %s", min)
+	//log.Printf("received message: %s", min)
 
 	// Resolve context variables.
 	sc := comms.GetSessionCollection(ctx)
@@ -51,6 +51,12 @@ func (g *dummyGame) HandleMessage(ctx context.Context, min comms.Message, mw com
 	case GameStageWaiting:
 		// TODO: more sophisticated player joinning request / response.
 		if g.player1 == nil && sc.Has(sessionID) {
+			if g.player2 != nil && g.player2.ID() == sessionID {
+				// player 1 cannot join again.
+				// ignore for now.
+				return nil
+			}
+
 			log.Printf("adding session as player 1: %s", sessionID)
 			g.lock.Lock()
 			g.player1 = sc.Get(sessionID)
@@ -81,9 +87,12 @@ func (g *dummyGame) HandleMessage(ctx context.Context, min comms.Message, mw com
 			}
 
 			log.Printf("response send to player 1: %s", resp)
-		}
-
-		if g.player2 == nil && sc.Has(sessionID) {
+		} else if g.player2 == nil && sc.Has(sessionID) {
+			if g.player1 != nil && g.player1.ID() == sessionID {
+				// player 1 cannot join again.
+				// ignore for now.
+				return nil
+			}
 			log.Printf("adding session as player 2: %s", sessionID)
 			g.lock.Lock()
 			g.player2 = sc.Get(sessionID)
@@ -132,7 +141,7 @@ func (g *dummyGame) HandleMessage(ctx context.Context, min comms.Message, mw com
 	case GameStageSetup:
 		// TODO: implement me
 		// only echoing the message for now
-		log.Printf("setup: received message: %s", min)
+		//log.Printf("setup: received message: %s", min)
 		mw.WriteMessage(comms.MustMessage(comms.NewMessageFromJSONString(fmt.Sprintf(`{
 			"type": "response",
 			"sessionID": %#v,
