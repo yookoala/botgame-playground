@@ -62,6 +62,19 @@ type message struct {
 	raw         []byte
 }
 
+// jsonMessage is the JSON representation of the message struct
+// for read-write to and from JSON
+type jsonMessage struct {
+	SessionID   string          `json:"sessionID,omitempty"`
+	Type        string          `json:"type,omitempty"`
+	RequestID   string          `json:"requestID,omitempty"`
+	Request     string          `json:"request,omitempty"`
+	Response    string          `json:"response,omitempty"`
+	Code        int             `json:"code,omitempty"`
+	Data        json.RawMessage `json:"data,omitempty"`
+	ErrorString string          `json:"error,omitempty"`
+}
+
 // String returns the string representation of the message
 func (m *message) String() string {
 	b, _ := m.MarshalJSON()
@@ -123,24 +136,15 @@ func (m *message) MarshalJSON() ([]byte, error) {
 	if m.raw != nil {
 		return m.raw, nil
 	}
-	return json.Marshal(struct {
-		SessionID string          `json:"sessionID,omitempty"`
-		Type      string          `json:"type,omitempty"`
-		RequestID string          `json:"requestID,omitempty"`
-		Request   string          `json:"request,omitempty"`
-		Response  string          `json:"response,omitempty"`
-		Code      int             `json:"code,omitempty"`
-		Data      json.RawMessage `json:"data,omitempty"`
-		Error     string          `json:"error,omitempty"`
-	}{
-		SessionID: m.sessionID,
-		Type:      m.messageType,
-		RequestID: m.requestID,
-		Request:   m.request,
-		Response:  m.response,
-		Code:      m.code,
-		Data:      m.data,
-		Error:     m.errorString,
+	return json.Marshal(&jsonMessage{
+		SessionID:   m.sessionID,
+		Type:        m.messageType,
+		RequestID:   m.requestID,
+		Request:     m.request,
+		Response:    m.response,
+		Code:        m.code,
+		Data:        m.data,
+		ErrorString: m.errorString,
 	})
 }
 
@@ -148,16 +152,7 @@ func (m *message) MarshalJSON() ([]byte, error) {
 func (m *message) UnmarshalJSON(b []byte) (err error) {
 	// Unmarshal to an unnamed struct type with essential fields.
 	// Return if there is an error.
-	v := struct {
-		SessionID   string          `json:"sessionID,omitempty"`
-		Type        string          `json:"type,omitempty"`
-		RequestID   string          `json:"requestID,omitempty"`
-		Request     string          `json:"request,omitempty"`
-		Response    string          `json:"response,omitempty"`
-		Code        int             `json:"code,omitempty"`
-		Data        json.RawMessage `json:"data,omitempty"`
-		ErrorString string          `json:"error,omitempty"`
-	}{}
+	v := jsonMessage{}
 	if err = json.Unmarshal(b, &v); err != nil {
 		return
 	}
