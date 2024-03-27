@@ -13,14 +13,28 @@ type Message interface {
 	// Type returns the type of the message
 	Type() string
 
+	// Unmarshal raw into any type
+	Unmarshal(v interface{}) error
+
 	// ReadDataTo read from the data field and write to the given type
 	ReadDataTo(v interface{}) error
 
 	// WriteDataFrom read frojm the given type and write to the data field
 	WriteDataFrom(v interface{}) error
+}
 
-	// Unmarshal raw into any type
-	Unmarshal(v interface{}) error
+// Signal abstraction.
+//
+// For spontaneous messages that do not require a server-client
+// communication (request or an event). Used for process initiation and etc.
+type Signal interface {
+	Message
+
+	// Type returns the type of the message
+	Type() string
+
+	// Signal returns the signal type of the message
+	Signal() string
 }
 
 // Request abstraction
@@ -62,6 +76,7 @@ type ErrorResponse interface {
 // Greeting message
 type message struct {
 	sessionID   string
+	signal      string
 	messageType string
 	requestID   string
 	requestType string
@@ -77,6 +92,7 @@ type message struct {
 type jsonMessage struct {
 	SessionID   string          `json:"sessionID,omitempty"`
 	Type        string          `json:"type,omitempty"`
+	Signal      string          `json:"signal,omitempty"`
 	RequestID   string          `json:"requestID,omitempty"`
 	RequestType string          `json:"requestType,omitempty"`
 	Response    string          `json:"response,omitempty"`
@@ -94,6 +110,11 @@ func (m *message) String() string {
 // SessionID returns the session ID of the message
 func (m *message) SessionID() string {
 	return m.sessionID
+}
+
+// Signal returns the signal type of the message
+func (m *message) Signal() string {
+	return m.signal
 }
 
 // Type returns the type of the message
@@ -153,6 +174,7 @@ func (m *message) MarshalJSON() ([]byte, error) {
 	}
 	return json.Marshal(&jsonMessage{
 		SessionID:   m.sessionID,
+		Signal:      m.signal,
 		Type:        m.messageType,
 		RequestID:   m.requestID,
 		RequestType: m.requestType,
@@ -174,6 +196,7 @@ func (m *message) UnmarshalJSON(b []byte) (err error) {
 
 	// Assign the fields to the message
 	m.sessionID = v.SessionID
+	m.signal = v.Signal
 	m.messageType = v.Type
 	m.requestID = v.RequestID
 	m.requestType = v.RequestType
@@ -201,6 +224,19 @@ func NewMessageFromJSONString(s string) (Message, error) {
 		return nil, fmt.Errorf("error unmarshalling JSON string: %s, JSON: %s", err, s)
 	}
 	return m, nil
+}
+
+// NewSignal creates a new signal message
+func NewSignal(signal string, data interface{}) Message {
+	m := &message{
+		messageType: "signal",
+		signal:      signal,
+	}
+	if data != nil {
+		b, _ := json.Marshal(data)
+		m.data = b
+	}
+	return m
 }
 
 // Create a new simple message
