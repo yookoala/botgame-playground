@@ -48,7 +48,6 @@ func (c *gameClient) HandleMessage(ctx context.Context, m comms.Message, mw comm
 				log.Printf("received stage change message: %s", m)
 				evt.ReadDataTo(&c.stage)
 				log.Printf("stage changed to %s", c.stage)
-				return
 			}
 			if c.stage != game.GameStageSetup {
 				log.Printf("received unexpected event: %s", m)
@@ -61,10 +60,22 @@ func (c *gameClient) HandleMessage(ctx context.Context, m comms.Message, mw comm
 
 	case game.GameStageSetup:
 		if m.Type() != "signal" {
+			return fmt.Errorf("received unexpected message in setup stage. expected signal, got: %s", m)
+		}
+		sig := m.(comms.Signal)
+		if sig.Signal() != "client:setup" {
 			return fmt.Errorf("received unexpected message in setup stage. expected signal of client:setup, got: %s", m)
 		}
 
-		// TODO: send the ship allocations to game server then wait.
+		// send the ship allocations to game server then wait.
+		ships := make([]*game.ShipState, 5)
+		ships[0], _ = game.NewShipState(game.ShipIDCarrier, [2]int{0, 0}, game.ShipDirectionToRight)
+		ships[1], _ = game.NewShipState(game.ShipIDBattleship, [2]int{0, 1}, game.ShipDirectionToRight)
+		ships[2], _ = game.NewShipState(game.ShipIDCruiser, [2]int{0, 2}, game.ShipDirectionToRight)
+		ships[3], _ = game.NewShipState(game.ShipIDSubmarine, [2]int{0, 3}, game.ShipDirectionToRight)
+		ships[4], _ = game.NewShipState(game.ShipIDDestroyer, [2]int{0, 4}, game.ShipDirectionToRight)
+		err = mw.WriteMessage(comms.NewRequest("", "setup", ships))
+		return
 	}
 
 	return nil

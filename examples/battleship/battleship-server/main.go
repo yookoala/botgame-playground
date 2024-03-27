@@ -143,22 +143,15 @@ func (g *dummyGame) HandleMessage(ctx context.Context, min comms.Message, mw com
 		}
 
 	case game.GameStageSetup:
-		// TODO: implement me
-		// only echoing the message for now
-		//log.Printf("setup: received message: %s", min)
 		req := min.(comms.Request)
-		err := mw.WriteMessage(comms.NewResponse(
-			sessionID,
-			req.RequestID(),
-			req.RequestType(),
-			200,
-			"success",
-			"pong",
-		))
-		if err != nil {
-			log.Printf("error sending response message: %s", err)
-			return err
+		if req.RequestType() != "setup" {
+			return fmt.Errorf("invalid request type: %v", req.RequestType())
 		}
+
+		ships := make([]game.ShipState, 5)
+		req.ReadDataTo(&ships)
+
+		log.Printf("received setup request: %v", ships)
 	}
 	return nil
 }
