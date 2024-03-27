@@ -1,12 +1,16 @@
 package comms
 
-import "context"
+import (
+	"context"
+	"log/slog"
+)
 
 type contextKey int
 
 const (
 	sessionIDKey contextKey = iota
 	sessionCollectionKey
+	loggerKey
 )
 
 // WithSessionID returns a new context with the session ID.
@@ -35,4 +39,18 @@ func GetSessionCollection(ctx context.Context) SessionCollection {
 		return nil
 	}
 	return v.(SessionCollection)
+}
+
+// WithLogger returns a new context with the logger.
+func WithLogger(ctx context.Context, logger slog.Logger) context.Context {
+	return context.WithValue(ctx, loggerKey, logger)
+}
+
+// GetLogger returns the logger from the context.
+func GetLogger(ctx context.Context) slog.Logger {
+	v := ctx.Value(loggerKey)
+	if v == nil {
+		panic("logger not found in context")
+	}
+	return v.(slog.Logger)
 }
