@@ -61,7 +61,11 @@ func TestNewSimpleMessage_MarshalJSON(t *testing.T) {
 
 func TestNewSimpleMessage_UnmarshalJSON(t *testing.T) {
 	m := comms.NewSimpleMessage("", "")
-	json.Unmarshal([]byte(`{"sessionID":"123", "userID": "abc", "type":"test"}`), m)
+	json.Unmarshal([]byte(`{
+		"sessionID":"123",
+		"userID": "abc",
+		"type":"test"
+	}`), m)
 
 	// Check the session ID
 	if expected, actual := "123", m.SessionID(); expected != actual {
@@ -73,6 +77,14 @@ func TestNewSimpleMessage_UnmarshalJSON(t *testing.T) {
 		t.Errorf("type is not correct. expected %#v, got %#v", expected, actual)
 	}
 
+	// Unmarshal extra information from raw data.
+	v := struct {
+		UserID string `json:"userID"`
+	}{}
+	m.Unmarshal(&v)
+	if expected, actual := "abc", v.UserID; expected != actual {
+		t.Errorf("userID is not correct. expected %#v, got %#v", expected, actual)
+	}
 }
 
 func TestMessage_ReadDataTo(t *testing.T) {
