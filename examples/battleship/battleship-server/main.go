@@ -39,6 +39,11 @@ func (g *dummyGame) HandleMessage(ctx context.Context, min comms.Message, mw com
 	sc := comms.GetSessionCollection(ctx)
 	sessionID := comms.GetSessionID(ctx)
 
+	if min.Type() == "signal" {
+		// Ignore signal for now.
+		return nil
+	}
+
 	switch g.stage {
 	case game.GameStageWaiting:
 
@@ -114,7 +119,7 @@ func (g *dummyGame) HandleMessage(ctx context.Context, min comms.Message, mw com
 			if g.player1 != nil && g.player2 != nil {
 				log.Print("move on to setup stage")
 				g.stage = game.GameStageSetup
-				mw.WriteMessage(comms.MustMessage(comms.NewMessageFromJSONString(`{"type": "event", "event": "stage_change", "data": "setup"}`)))
+				mw.WriteMessage(comms.NewEvent(sessionID, "stage:change", game.GameStageSetup))
 			}
 
 		case "subscribe":

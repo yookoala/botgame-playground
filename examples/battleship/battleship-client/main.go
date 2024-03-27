@@ -3,11 +3,11 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"os"
 	"os/signal"
-	"time"
 
 	"github.com/yookoala/botgame-playground/comms"
 	"github.com/yookoala/botgame-playground/examples/battleship/game"
@@ -25,7 +25,48 @@ type gameClient struct {
 	stage game.GameStage
 }
 
-func (c *gameClient) HandleMessage(ctx context.Context, m comms.Message, mw comms.MessageWriter) error {
+func (c *gameClient) HandleMessage(ctx context.Context, m comms.Message, mw comms.MessageWriter) (err error) {
+
+	switch c.stage {
+	case game.GameStageWaiting:
+		switch m.Type() {
+		case "signal":
+			sig := m.(comms.Signal)
+			if sig.Signal() != "client:init" {
+				return fmt.Errorf("received unexpected message in setup stage. expected signal of client:init, got: %s", m)
+			}
+
+			// Annonce join game
+			err = mw.WriteMessage(comms.NewRequest("", "join", nil))
+			if err != nil {
+				log.Fatal(err)
+			}
+			return
+		case "event":
+			evt := m.(comms.Event)
+			if evt.EventType() == "stage:change" {
+				log.Printf("received stage change message: %s", m)
+				evt.ReadDataTo(&c.stage)
+				log.Printf("stage changed to %s", c.stage)
+				return
+			}
+			if c.stage != game.GameStageSetup {
+				log.Printf("received unexpected event: %s", m)
+				return
+			}
+
+			// Handle setup event
+			return c.HandleMessage(ctx, comms.NewSignal("client:setup", nil), mw)
+		}
+
+	case game.GameStageSetup:
+		if m.Type() != "signal" {
+			return fmt.Errorf("received unexpected message in setup stage. expected signal of client:setup, got: %s", m)
+		}
+
+		// TODO: send the ship allocations to game server then wait.
+	}
+
 	return nil
 }
 
@@ -50,22 +91,12 @@ func main() {
 		log.Fatal(err)
 	}
 
-	// Annonce join game
-	err = sess.WriteMessage(comms.NewRequest(
-		"",
-		"join",
-		nil,
-	))
+	// Create a game client
+	cli := NewGameClient()
+	err = cli.HandleMessage(context.Background(), comms.NewSignal("client:init", nil), sess)
 	if err != nil {
 		log.Fatal(err)
 	}
-
-	// Read first server response
-	m, err := sess.ReadMessage()
-	if err != nil {
-		log.Fatal(err)
-	}
-	fmt.Printf("Server response: %s\n", m)
 
 	// Listen to OS signals
 	c := make(chan os.Signal, 1)
@@ -86,29 +117,16 @@ func main() {
 				return err
 			}
 			fmt.Printf("Server %s: %s\n", m.Type(), m)
-			return nil
+			return cli.HandleMessage(context.Background(), m, sess)
 		}):
-			if err == nil {
-				continue
-			}
-		case err := <-waitErrorOnce(func() error {
-			return sess.WriteMessage(comms.NewRequest(
-				"",
-				"ping",
-				nil,
-			))
-		}):
-			if err == nil {
-				time.Sleep(1 * time.Second)
-				continue
-			}
-			switch err.(type) {
-			case *net.OpError:
+			if err == io.EOF {
 				log.Print("Socket closed. Quit")
-				os.Exit(0)
-			default:
-				log.Printf("Socket error: %v", err)
-				os.Exit(1)
+				err = nil
+				return
+			}
+			if err != nil {
+				log.Printf("unexpected read error: %s", err)
+				continue
 			}
 		}
 	}
