@@ -55,12 +55,16 @@ func (c *dummyConn) Read(p []byte) (n int, err error) {
 }
 
 func (c *dummyConn) Write(p []byte) (n int, err error) {
+	// Make a copy of p to send.
+	b := make([]byte, len(p))
+	copy(b, p)
+
 	select {
 	case <-c.term:
 		// terminated
 		return 0, io.EOF
-	case c.in <- p:
-		return len(p), nil
+	case c.in <- b:
+		return len(b), nil
 	}
 }
 
