@@ -106,7 +106,7 @@ func (g *dummyGame) HandleMessage(ctx context.Context, min comms.Message, mw com
 					return err
 				}
 
-				log.Printf("response send to player 1: %s", resp)
+				log.Printf("response send to player 2: %s", resp)
 			}
 
 			// After both player has joinned and all setup done
