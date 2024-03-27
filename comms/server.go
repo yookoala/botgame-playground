@@ -2,6 +2,7 @@ package comms
 
 import (
 	"context"
+	"crypto/sha1"
 	"fmt"
 	"io"
 	"log"
@@ -9,6 +10,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"time"
 )
 
 // getNewSessionIDs allocate a new session ID for use.
@@ -17,7 +19,10 @@ func getNewSessionIDs() <-chan string {
 	go func() {
 		maxInt := int(^uint(0) >> 1)
 		for id := 1; true; id++ {
-			ch <- fmt.Sprintf("%d", id)
+			hash := sha1.New()
+			hash.Write([]byte(fmt.Sprintf("%d.%d", id, time.Now().UnixMicro())))
+			hashId := hash.Sum(nil)
+			ch <- fmt.Sprintf("%x", hashId)[0:12]
 			if id == maxInt {
 				id = 0
 			}
