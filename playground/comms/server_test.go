@@ -167,16 +167,13 @@ func TestNewDummySessions(t *testing.T) {
 }
 
 func TestSimpleMessageQueue(t *testing.T) {
+	var err error
 	sc := comms.NewSessionCollection()
 	smq := comms.NewSimpleMessageQueue(sc, 0)
 
 	// Dummy session for test
-	s1, c1 := NewDummySessions("session-1", 0)
-	defer s1.Close()
-	defer c1.Close()
-	s2, c2 := NewDummySessions("session-2", 0)
-	defer s2.Close()
-	defer c2.Close()
+	s1, _ := NewDummySessions("session-1", 0)
+	s2, _ := NewDummySessions("session-2", 0)
 
 	// Add session after the queue is started
 	mh := newDummyMessageHandler(2)
@@ -185,16 +182,22 @@ func TestSimpleMessageQueue(t *testing.T) {
 	sc.Add(s1)
 	sc.Add(s2)
 
-	// Send a message from client c1
-	err := c1.WriteMessage(comms.NewSimpleMessage("session-1", "test:client-to-server:1"))
+	// Enqueue a message as session-1 client
+	err = smq.Enqueue(
+		comms.WithSessionID(context.Background(), "session-1"),
+		comms.NewSimpleMessage("session-1", "test:client-to-server:1"),
+	)
 	if err != nil {
-		t.Fatalf("unexpected error writing message: %s", err)
+		t.Fatalf("unexpected error enqueue message: %s", err)
 	}
 
-	// Send a message from client c2
-	err = c2.WriteMessage(comms.NewSimpleMessage("session-2", "test:client-to-server:2"))
+	// Enqueue a message as session-2 client
+	err = smq.Enqueue(
+		comms.WithSessionID(context.Background(), "session-2"),
+		comms.NewSimpleMessage("session-2", "test:client-to-server:2"),
+	)
 	if err != nil {
-		t.Fatalf("unexpected error writing message: %s", err)
+		t.Fatalf("unexpected error enqueue message: %s", err)
 	}
 
 	// Wait for the message handler to receive both messages
@@ -210,6 +213,16 @@ func TestSimpleMessageQueue(t *testing.T) {
 	if want, have := "test:client-to-server:2", mh.messages[1].Type(); want != have {
 		t.Errorf("unexpected message type. want %#v, have %#v", want, have)
 	}
+}
+
+func TestSimpleMessageQueue_StartStop(t *testing.T) {
+	sc := comms.NewSessionCollection()
+	smq := comms.NewSimpleMessageQueue(sc, 0)
+
+	// Add session after the queue is started
+	mh := newDummyMessageHandler(0)
+	smq.Start(mh, nil) // dummy message handle won't be using the message writer.
+	smq.Stop()
 }
 
 func TestSimpleMessageBroker(t *testing.T) {

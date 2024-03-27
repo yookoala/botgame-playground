@@ -80,9 +80,11 @@ type ContextMessage struct {
 // To simplify server implementations. Messages are collected and send
 // to the MessageHandler in a linear manner.
 type SimpleMessageQueue struct {
-	sc   SessionCollection
-	mq   chan ContextMessage
-	term chan bool
+	sc SessionCollection
+	mq chan ContextMessage
+
+	lock    *sync.RWMutex
+	stopped bool
 }
 
 // Start starts the message queue and start sending messages to the
@@ -104,35 +106,27 @@ func (smq *SimpleMessageQueue) Start(mh MessageHandler, mw MessageWriter) {
 	// 2. The message queue is stopped
 	smq.sc.OnAdd(func(s *Session) {
 		log.Printf("SimpleMessageQueue get session added: %s", s.ID())
-		go func(mq chan<- ContextMessage, term <-chan bool) {
+		go func(smq *SimpleMessageQueue, s *Session) {
 			for {
-				select {
-				case <-smq.term:
-					// Terminate the reading loop.
+				// Try reading message from the session.
+				m, err := s.ReadMessage()
+				if err == io.EOF {
+					// Session closed. Terminate reading loop.
+					log.Printf("SimpleMessageQueue session closed: %s", s.ID())
+					s.Close()
 					return
-				default:
-					//log.Printf("SimpleMessageQueue pending message from session: %s", s.ID())
-					m, err := s.ReadMessage()
-					if err == io.EOF {
-						// Session closed. Terminate reading loop.
-						log.Printf("SimpleMessageQueue session closed: %s", s.ID())
-						s.Close()
-						return
-					}
-					if err != nil {
-						// Unexpected error in reading message. Log and terminate reading loop.
-						return
-					}
-					//log.Printf("SimpleMessageQueue got message from session: %s, %s", s.ID(), m)
-
-					// Fan-in messages to a single queue.
-					mq <- ContextMessage{
-						Context: WithSessionID(ctx, s.ID()),
-						Message: m,
-					}
+				} else if err != nil {
+					// Unexpected error in reading message. Log and terminate reading loop.
+					return
 				}
+
+				// Fan-in messages to a single queue.
+				smq.Enqueue(
+					WithSessionID(ctx, s.ID()),
+					m,
+				)
 			}
-		}(smq.mq, smq.term)
+		}(smq, s)
 	})
 
 	// Note: intentionally blocking before onAdd is correctly called.
@@ -140,30 +134,70 @@ func (smq *SimpleMessageQueue) Start(mh MessageHandler, mw MessageWriter) {
 	//       arrive before the queue is ready. In that case, message
 	//       will be lost.
 
-	go func(mq <-chan ContextMessage, term <-chan bool, mh MessageHandler, mw MessageWriter) {
+	go func(smq *SimpleMessageQueue, mh MessageHandler, mw MessageWriter) {
 		for {
-			select {
-			case <-smq.term:
-				// Terminate the message queue.
+			ctx, m, err := smq.Dequeue()
+			if err == io.EOF {
+				// Queue stopped,
 				return
-			case cm := <-smq.mq:
-				mh.HandleMessage(cm.Context, cm.Message, mw)
+			} else if err != nil {
+				panic(err)
 			}
+
+			mh.HandleMessage(ctx, m, mw)
 		}
-	}(smq.mq, smq.term, mh, mw)
+	}(smq, mh, mw)
+}
+
+// Enqueue sends a message to the message queue.
+func (smq *SimpleMessageQueue) Enqueue(ctx context.Context, m Message) (err error) {
+
+	// Enqueue should check if the queue is stopped first
+	// because sending to closed channel will panic.
+	// There is no way to detect channel closed without
+	// reading from, which Enqueue should not do.
+	smq.lock.RLock()
+	defer smq.lock.RUnlock()
+	if smq.stopped {
+		// If the queue is stopped, terminate the reading loop for the session.
+		return io.EOF
+	}
+
+	smq.mq <- ContextMessage{
+		Context: ctx,
+		Message: m,
+	}
+	return
+}
+
+// Dequeue receives a message from the message queue.
+func (smq *SimpleMessageQueue) Dequeue() (ctx context.Context, m Message, err error) {
+	// Dequeue won't lock because it is easy to check if the read-channel is closed.
+	cm, ok := <-smq.mq
+	if !ok {
+		return nil, nil, io.EOF
+	}
+	return cm.Context, cm.Message, nil
 }
 
 // Stop stops the message queue.
 func (smq *SimpleMessageQueue) Stop() {
-	select {
-	case <-smq.term:
-		// Already stopping or stopped. Do nothing.
+
+	// check if the queue is already stopped / stopping by another
+	// goroutine.
+	smq.lock.RLock()
+	stopped := smq.stopped
+	smq.lock.RUnlock()
+	if stopped {
+		// already stopping or stopped. Do nothing.
 		return
-	default:
-		log.Printf("Stopping SimpleMessageQueue...")
-		close(smq.term)
-		close(smq.mq)
 	}
+
+	// declare the queue stopped and close the channel.
+	smq.lock.Lock()
+	smq.stopped = true
+	close(smq.mq)
+	smq.lock.Unlock()
 }
 
 // HandleSession adds a session to the message queue.
@@ -186,9 +220,11 @@ func (smq *SimpleMessageQueue) HandleSession(s *Session) error {
 func NewSimpleMessageQueue(sc SessionCollection, bufferSize int) *SimpleMessageQueue {
 	mq := make(chan ContextMessage, bufferSize)
 	return &SimpleMessageQueue{
-		sc:   sc,
-		mq:   mq,
-		term: make(chan bool),
+		sc: sc,
+		mq: mq,
+
+		lock:    &sync.RWMutex{},
+		stopped: false,
 	}
 }
 
