@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net"
@@ -9,6 +10,7 @@ import (
 	"time"
 
 	"github.com/yookoala/botgame-playground/comms"
+	"github.com/yookoala/botgame-playground/examples/battleship/game"
 )
 
 func waitErrorOnce(fn func() error) <-chan error {
@@ -17,6 +19,18 @@ func waitErrorOnce(fn func() error) <-chan error {
 		ch <- fn()
 	}()
 	return ch
+}
+
+type gameClient struct {
+	stage game.GameStage
+}
+
+func (c *gameClient) HandleMessage(ctx context.Context, m comms.Message, mw comms.MessageWriter) error {
+	return nil
+}
+
+func NewGameClient() *gameClient {
+	return &gameClient{}
 }
 
 func main() {

@@ -10,19 +10,11 @@ import (
 	"sync"
 
 	"github.com/yookoala/botgame-playground/comms"
-)
-
-type GameStage int
-
-const (
-	GameStageWaiting GameStage = iota
-	GameStageSetup
-	GameStagePlaying
-	GameStageEnded
+	"github.com/yookoala/botgame-playground/examples/battleship/game"
 )
 
 type dummyGame struct {
-	stage GameStage
+	stage game.GameStage
 
 	player1 *comms.Session
 	player2 *comms.Session
@@ -48,7 +40,7 @@ func (g *dummyGame) HandleMessage(ctx context.Context, min comms.Message, mw com
 	sessionID := comms.GetSessionID(ctx)
 
 	switch g.stage {
-	case GameStageWaiting:
+	case game.GameStageWaiting:
 		// TODO: more sophisticated player joinning request / response.
 		if g.player1 == nil && sc.Has(sessionID) {
 			if g.player2 != nil && g.player2.ID() == sessionID {
@@ -129,11 +121,11 @@ func (g *dummyGame) HandleMessage(ctx context.Context, min comms.Message, mw com
 		// start accepting game setup request.
 		if g.player1 != nil && g.player2 != nil {
 			log.Print("move on to setup stage")
-			mw.WriteMessage(comms.MustMessage(comms.NewMessageFromJSONString(`{"type": "event","event": "accept_setup"}`)))
-			g.stage = GameStageSetup
+			g.stage = game.GameStageSetup
+			mw.WriteMessage(comms.MustMessage(comms.NewMessageFromJSONString(`{"type": "event", "event": "stage_change", "data": "setup"}`)))
 		}
 
-	case GameStageSetup:
+	case game.GameStageSetup:
 		// TODO: implement me
 		// only echoing the message for now
 		//log.Printf("setup: received message: %s", min)
