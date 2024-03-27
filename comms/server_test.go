@@ -6,7 +6,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/yookoala/botgame-playground/playground/comms"
+	"github.com/yookoala/botgame-playground/comms"
 )
 
 type dummyConn struct {

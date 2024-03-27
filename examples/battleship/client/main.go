@@ -8,7 +8,7 @@ import (
 	"os/signal"
 	"time"
 
-	"github.com/yookoala/botgame-playground/playground/comms"
+	"github.com/yookoala/botgame-playground/comms"
 )
 
 func waitErrorOnce(fn func() error) <-chan error {

@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/yookoala/botgame-playground/playground/comms"
+	"github.com/yookoala/botgame-playground/comms"
 )
 
 func TestNewSimpleMessage(t *testing.T) {

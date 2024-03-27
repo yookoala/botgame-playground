@@ -9,7 +9,7 @@ import (
 	"os/signal"
 	"sync"
 
-	"github.com/yookoala/botgame-playground/playground/comms"
+	"github.com/yookoala/botgame-playground/comms"
 )
 
 type GameStage int
