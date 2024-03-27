@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"io"
 	"log"
 	"net"
 	"os"
@@ -12,14 +11,6 @@ import (
 	"github.com/yookoala/botgame-playground/comms"
 	"github.com/yookoala/botgame-playground/examples/battleship/game"
 )
-
-func waitErrorOnce(fn func() error) <-chan error {
-	ch := make(chan error)
-	go func() {
-		ch <- fn()
-	}()
-	return ch
-}
 
 type gameClient struct {
 	stage game.GameStage
@@ -97,48 +88,23 @@ func main() {
 	}
 	defer conn.Close()
 
-	sess := comms.NewSession("", conn)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	// Create a game client
-	cli := NewGameClient()
-	err = cli.HandleMessage(context.Background(), comms.NewSignal("client:init", nil), sess)
-	if err != nil {
-		log.Fatal(err)
-	}
-
 	// Listen to OS signals
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt)
+	go func() {
+		for {
+			sig := <-c
 
-	for {
-		select {
-		case sig := <-c:
 			// Check if sig is interrupt (Ctrl+C)
 			if sig.String() == "interrupt" {
-				return
+				conn.Close()
 			} else {
 				fmt.Printf("received system signal: %s\n", sig.String())
 			}
-		case err := <-waitErrorOnce(func() error {
-			m, err := sess.ReadMessage()
-			if err != nil {
-				return err
-			}
-			fmt.Printf("Server %s: %s\n", m.Type(), m)
-			return cli.HandleMessage(context.Background(), m, sess)
-		}):
-			if err == io.EOF {
-				log.Print("Socket closed. Quit")
-				err = nil
-				return
-			}
-			if err != nil {
-				log.Printf("unexpected read error: %s", err)
-				continue
-			}
 		}
-	}
+	}()
+
+	// Create a game client
+	cli := NewGameClient()
+	comms.StartClient(cli, conn)
 }
