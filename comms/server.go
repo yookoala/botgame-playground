@@ -30,8 +30,8 @@ func getNewSessionIDs() <-chan string {
 	return ch
 }
 
-// StartListen creates a new server loop and start listening to the listener.
-func StartListen(listener net.Listener, sh SessionHandler) (err error) {
+// StartServer creates a new server loop and start listening to the listener.
+func StartServer(listener net.Listener, sh SessionHandler) (err error) {
 	defer listener.Close()
 
 	log.Printf("start listening on %s", listener.Addr().String())
