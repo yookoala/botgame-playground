@@ -27,13 +27,19 @@ type Message interface {
 type Request interface {
 	Message
 
-	// Request returns the request field of the message
-	Request() string
+	// ReqeustID returns the request id of the message
+	RequestID() string
+
+	// RequestType returns the request field of the message
+	RequestType() string
 }
 
 // Response abstraction
 type Response interface {
 	Message
+
+	// ReqeustID returns the request id of the message
+	RequestID() string
 
 	// Response returns the response field of the message
 	Response() string
@@ -46,6 +52,10 @@ type Response interface {
 type ErrorResponse interface {
 	Response
 
+	// ReqeustID returns the request id of the message
+	RequestID() string
+
+	// ErrorString returns the error string of the message
 	ErrorString() string
 }
 
@@ -54,7 +64,7 @@ type message struct {
 	sessionID   string
 	messageType string
 	requestID   string
-	request     string
+	requestType string
 	response    string
 	code        int
 	data        json.RawMessage
@@ -68,7 +78,7 @@ type jsonMessage struct {
 	SessionID   string          `json:"sessionID,omitempty"`
 	Type        string          `json:"type,omitempty"`
 	RequestID   string          `json:"requestID,omitempty"`
-	Request     string          `json:"request,omitempty"`
+	RequestType string          `json:"requestType,omitempty"`
 	Response    string          `json:"response,omitempty"`
 	Code        int             `json:"code,omitempty"`
 	Data        json.RawMessage `json:"data,omitempty"`
@@ -91,9 +101,14 @@ func (m *message) Type() string {
 	return m.messageType
 }
 
-// Request returns the request field of the message
-func (m *message) Request() string {
-	return m.request
+// RequestID returns the request id of the message
+func (m *message) RequestID() string {
+	return m.requestID
+}
+
+// RequestType returns the request field of the message
+func (m *message) RequestType() string {
+	return m.requestType
 }
 
 // Response returns the response field of the message
@@ -140,7 +155,7 @@ func (m *message) MarshalJSON() ([]byte, error) {
 		SessionID:   m.sessionID,
 		Type:        m.messageType,
 		RequestID:   m.requestID,
-		Request:     m.request,
+		RequestType: m.requestType,
 		Response:    m.response,
 		Code:        m.code,
 		Data:        m.data,
@@ -161,7 +176,7 @@ func (m *message) UnmarshalJSON(b []byte) (err error) {
 	m.sessionID = v.SessionID
 	m.messageType = v.Type
 	m.requestID = v.RequestID
-	m.request = v.Request
+	m.requestType = v.RequestType
 	m.response = v.Response
 	m.code = v.Code
 	m.data = v.Data
@@ -212,9 +227,10 @@ func MustMessage(m Message, err error) Message {
 }
 
 // Create a new request
-func NewRequest(requestID string, data interface{}) Request {
+func NewRequest(requestID, requestType string, data interface{}) Request {
 	m := &message{
 		requestID:   requestID,
+		requestType: requestType,
 		messageType: "request",
 	}
 	if data != nil {
@@ -225,10 +241,11 @@ func NewRequest(requestID string, data interface{}) Request {
 }
 
 // Create a new response
-func NewResponse(sessionID, requestID string, code int, response string, data interface{}) Response {
+func NewResponse(sessionID, requestID, requestType string, code int, response string, data interface{}) Response {
 	m := &message{
 		sessionID:   sessionID,
 		requestID:   requestID,
+		requestType: requestType,
 		code:        code,
 		response:    response,
 		messageType: "response",
