@@ -51,10 +51,11 @@ func main() {
 	}
 
 	// Annonce join game
-	err = sess.WriteMessage(comms.MustMessage(comms.NewMessageFromJSONString(`{
-		"type": "request",
-		"request": "join"
-	}`)))
+	err = sess.WriteMessage(comms.NewRequest(
+		"",
+		"join",
+		nil,
+	))
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -91,9 +92,11 @@ func main() {
 				continue
 			}
 		case err := <-waitErrorOnce(func() error {
-			return sess.WriteMessage(comms.MustMessage(comms.NewMessageFromJSONString(
-				fmt.Sprintf(`{"sessionID": "%s", "type":"request", "request":"ping"}`, sess.ID()),
-			)))
+			return sess.WriteMessage(comms.NewRequest(
+				"",
+				"ping",
+				nil,
+			))
 		}):
 			if err == nil {
 				time.Sleep(1 * time.Second)

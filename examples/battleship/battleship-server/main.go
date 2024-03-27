@@ -41,71 +41,92 @@ func (g *dummyGame) HandleMessage(ctx context.Context, min comms.Message, mw com
 
 	switch g.stage {
 	case game.GameStageWaiting:
-		// TODO: more sophisticated player joinning request / response.
-		if g.player1 == nil && sc.Has(sessionID) {
-			if g.player2 != nil && g.player2.ID() == sessionID {
-				// player 1 cannot join again.
-				// ignore for now.
-				return nil
-			}
 
-			log.Printf("adding session as player 1: %s", sessionID)
-			g.lock.Lock()
-			g.player1 = sc.Get(sessionID)
-			g.lock.Unlock()
-			resp, err := comms.NewMessageFromJSONString(fmt.Sprintf(
-				`{
-					"type": "response",
-					"sessionID": %#v,
-					"response": "success",
-					"data": "player1",
-					"code": 200,
-					"message": "You have joined the game."
-				}`,
-				sessionID,
-			))
-			if err != nil {
-				log.Printf("error creating response message: %s", err)
-				return err
-			}
+		req := min.(comms.Request)
+		switch req.RequestType() {
+		case "join":
+			// TODO: more sophisticated player joinning request / response.
+			if g.player1 == nil && sc.Has(sessionID) {
+				if g.player2 != nil && g.player2.ID() == sessionID {
+					// player 1 cannot join again.
+					// ignore for now.
+					return nil
+				}
 
-			err = mw.WriteMessage(resp)
-			if err != nil {
-				log.Printf("error sending response message: %s", err)
+				log.Printf("adding session as player 1: %s", sessionID)
 				g.lock.Lock()
-				g.player1 = nil // unset player1
+				g.player1 = sc.Get(sessionID)
 				g.lock.Unlock()
-				return err
+
+				resp := comms.NewResponse(
+					sessionID,
+					req.RequestID(),
+					req.RequestType(),
+					200,
+					"success",
+					"player1",
+				)
+
+				err := mw.WriteMessage(resp)
+				if err != nil {
+					log.Printf("error sending response message: %s", err)
+					g.lock.Lock()
+					g.player1 = nil // unset player1
+					g.lock.Unlock()
+					return err
+				}
+
+				log.Printf("response send to player 1: %s", resp)
+			} else if g.player2 == nil && sc.Has(sessionID) {
+				if g.player1 != nil && g.player1.ID() == sessionID {
+					// player 1 cannot join again.
+					// ignore for now.
+					return nil
+				}
+				log.Printf("adding session as player 2: %s", sessionID)
+				g.lock.Lock()
+				g.player2 = sc.Get(sessionID)
+				g.lock.Unlock()
+
+				resp := comms.NewResponse(
+					sessionID,
+					req.RequestID(),
+					req.RequestType(),
+					200,
+					"success",
+					"player2",
+				)
+
+				err := mw.WriteMessage(resp)
+				if err != nil {
+					log.Printf("error sending response message: %s", err)
+					g.lock.Lock()
+					g.player2 = nil // unset player1
+					g.lock.Unlock()
+					return err
+				}
+
+				log.Printf("response send to player 1: %s", resp)
 			}
 
-			log.Printf("response send to player 1: %s", resp)
-		} else if g.player2 == nil && sc.Has(sessionID) {
-			if g.player1 != nil && g.player1.ID() == sessionID {
-				// player 1 cannot join again.
-				// ignore for now.
-				return nil
+			// After both player has joinned and all setup done
+			// start accepting game setup request.
+			if g.player1 != nil && g.player2 != nil {
+				log.Print("move on to setup stage")
+				g.stage = game.GameStageSetup
+				mw.WriteMessage(comms.MustMessage(comms.NewMessageFromJSONString(`{"type": "event", "event": "stage_change", "data": "setup"}`)))
 			}
-			log.Printf("adding session as player 2: %s", sessionID)
-			g.lock.Lock()
-			g.player2 = sc.Get(sessionID)
-			g.lock.Unlock()
-			resp, err := comms.NewMessageFromJSONString(fmt.Sprintf(
-				`{
-					"type": "response",
-					"sessionID": %#v,
-					"response": "success",
-					"data": "player2",
-					"code": 200,
-					"message": "You have joined the game."
-				}`,
+
+		case "subscribe":
+			resp := comms.NewResponse(
 				sessionID,
-			))
-			if err != nil {
-				log.Printf("error creating response message: %s", err)
-				return err
-			}
-
-			err = mw.WriteMessage(resp)
+				req.RequestID(),
+				req.RequestType(),
+				200,
+				"success",
+				"subscribed",
+			)
+			err := mw.WriteMessage(resp)
 			if err != nil {
 				log.Printf("error sending response message: %s", err)
 				g.lock.Lock()
@@ -114,26 +135,25 @@ func (g *dummyGame) HandleMessage(ctx context.Context, min comms.Message, mw com
 				return err
 			}
 
-			log.Printf("response send to player 1: %s", resp)
-		}
-
-		// After both player has joinned and all setup done
-		// start accepting game setup request.
-		if g.player1 != nil && g.player2 != nil {
-			log.Print("move on to setup stage")
-			g.stage = game.GameStageSetup
-			mw.WriteMessage(comms.MustMessage(comms.NewMessageFromJSONString(`{"type": "event", "event": "stage_change", "data": "setup"}`)))
 		}
 
 	case game.GameStageSetup:
 		// TODO: implement me
 		// only echoing the message for now
 		//log.Printf("setup: received message: %s", min)
-		mw.WriteMessage(comms.MustMessage(comms.NewMessageFromJSONString(fmt.Sprintf(`{
-			"type": "response",
-			"sessionID": %#v,
-			"response": "pong"
-		}`, sessionID))))
+		req := min.(comms.Request)
+		err := mw.WriteMessage(comms.NewResponse(
+			sessionID,
+			req.RequestID(),
+			req.RequestType(),
+			200,
+			"success",
+			"pong",
+		))
+		if err != nil {
+			log.Printf("error sending response message: %s", err)
+			return err
+		}
 	}
 	return nil
 }
