@@ -118,9 +118,9 @@ func main() {
 		case sig := <-c:
 			// Check if sig is interrupt (Ctrl+C)
 			if sig.String() == "interrupt" {
-				conn.Close()
+				return
 			} else {
-				fmt.Printf("Received signal: %s\n", sig.String())
+				fmt.Printf("received system signal: %s\n", sig.String())
 			}
 		case err := <-waitErrorOnce(func() error {
 			m, err := sess.ReadMessage()
