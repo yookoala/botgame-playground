@@ -13,8 +13,11 @@ type Message interface {
 	// Type returns the type of the message
 	Type() string
 
-	// UnmarshalData unmarshals the data field into the given type
-	UnmarshalData(v interface{}) error
+	// ReadDataTo read from the data field and write to the given type
+	ReadDataTo(v interface{}) error
+
+	// WriteDataFrom read frojm the given type and write to the data field
+	WriteDataFrom(v interface{}) error
 
 	// Unmarshal raw into any type
 	Unmarshal(v interface{}) error
@@ -95,9 +98,19 @@ func (m *message) ErrorString() string {
 	return m.errorString
 }
 
-// UnmarshalData unmarshals the data into the given type
-func (m *message) UnmarshalData(v interface{}) error {
+// ReadDataTo read from the data field and write to the given type
+func (m *message) ReadDataTo(v interface{}) error {
 	return json.Unmarshal(m.data, v)
+}
+
+// WriteDataFrom marshals the given type into the data field
+func (m *message) WriteDataFrom(v interface{}) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	m.data = b
+	return nil
 }
 
 // Unmarshal raw into any type
