@@ -73,10 +73,18 @@ type ErrorResponse interface {
 	ErrorString() string
 }
 
+type Event interface {
+	Message
+
+	// EventType returns the event type of the message
+	EventType() string
+}
+
 // Greeting message
 type message struct {
 	sessionID   string
 	signal      string
+	eventType   string
 	messageType string
 	requestID   string
 	requestType string
@@ -93,6 +101,7 @@ type jsonMessage struct {
 	SessionID   string          `json:"sessionID,omitempty"`
 	Type        string          `json:"type,omitempty"`
 	Signal      string          `json:"signal,omitempty"`
+	EventType   string          `json:"eventType,omitempty"`
 	RequestID   string          `json:"requestID,omitempty"`
 	RequestType string          `json:"requestType,omitempty"`
 	Response    string          `json:"response,omitempty"`
@@ -120,6 +129,11 @@ func (m *message) Signal() string {
 // Type returns the type of the message
 func (m *message) Type() string {
 	return m.messageType
+}
+
+// EventType returns the event type of the message
+func (m *message) EventType() string {
+	return m.eventType
 }
 
 // RequestID returns the request id of the message
@@ -179,6 +193,7 @@ func (m *message) MarshalJSON() ([]byte, error) {
 		RequestID:   m.requestID,
 		RequestType: m.requestType,
 		Response:    m.response,
+		EventType:   m.eventType,
 		Code:        m.code,
 		Data:        m.data,
 		ErrorString: m.errorString,
@@ -197,6 +212,7 @@ func (m *message) UnmarshalJSON(b []byte) (err error) {
 	// Assign the fields to the message
 	m.sessionID = v.SessionID
 	m.signal = v.Signal
+	m.eventType = v.EventType
 	m.messageType = v.Type
 	m.requestID = v.RequestID
 	m.requestType = v.RequestType
@@ -231,6 +247,20 @@ func NewSignal(signal string, data interface{}) Message {
 	m := &message{
 		messageType: "signal",
 		signal:      signal,
+	}
+	if data != nil {
+		b, _ := json.Marshal(data)
+		m.data = b
+	}
+	return m
+}
+
+// NewEvent creates a new event message
+func NewEvent(sessionID, eventType string, data interface{}) Message {
+	m := &message{
+		sessionID:   sessionID,
+		eventType:   eventType,
+		messageType: "event",
 	}
 	if data != nil {
 		b, _ := json.Marshal(data)
