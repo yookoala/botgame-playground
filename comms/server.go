@@ -7,7 +7,6 @@ import (
 	"io"
 	"log"
 	"net"
-	"os"
 	"strings"
 	"sync"
 	"time"
@@ -31,8 +30,8 @@ func getNewSessionIDs() <-chan string {
 	return ch
 }
 
-// StartService creates a new server loop and start listening to the listener.
-func StartService(listener net.Listener, sh SessionHandler) {
+// StartListen creates a new server loop and start listening to the listener.
+func StartListen(listener net.Listener, sh SessionHandler) (err error) {
 	defer listener.Close()
 
 	log.Printf("start listening on %s", listener.Addr().String())
@@ -44,12 +43,10 @@ func StartService(listener net.Listener, sh SessionHandler) {
 			switch err.(type) {
 			case *net.OpError:
 				log.Print("Socket closed. Quit")
-				// TODO: some clean up to existing sessions?
-				os.Exit(0)
+				return nil
 			default:
 				log.Printf("Socket error: %v", err)
-				// TODO: some clean up to existing sessions?
-				os.Exit(1)
+				return err
 			}
 		}
 

@@ -208,5 +208,8 @@ func main() {
 	mq.Start(NewDummyGame(), mw)
 
 	// Start passing socket request to the message queue.
-	comms.StartService(l, mq)
+	err = comms.StartListen(l, mq)
+	if err != nil {
+		log.Printf("Server ended with error: %s (%#v)", err, err)
+	}
 }
