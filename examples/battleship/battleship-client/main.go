@@ -6,7 +6,6 @@ import (
 	"log"
 	"net"
 	"os"
-	"os/signal"
 
 	"github.com/yookoala/botgame-playground/comms"
 	"github.com/yookoala/botgame-playground/examples/battleship/game"
@@ -89,20 +88,7 @@ func main() {
 	defer conn.Close()
 
 	// Listen to OS signals
-	c := make(chan os.Signal, 1)
-	signal.Notify(c, os.Interrupt)
-	go func() {
-		for {
-			sig := <-c
-
-			// Check if sig is interrupt (Ctrl+C)
-			if sig.String() == "interrupt" {
-				conn.Close()
-			} else {
-				fmt.Printf("received system signal: %s\n", sig.String())
-			}
-		}
-	}()
+	comms.CloseOnSignal(conn, os.Interrupt)
 
 	// Create a game client
 	cli := NewGameClient()

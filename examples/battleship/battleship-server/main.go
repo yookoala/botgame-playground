@@ -6,7 +6,6 @@ import (
 	"log"
 	"net"
 	"os"
-	"os/signal"
 	"sync"
 
 	"github.com/yookoala/botgame-playground/comms"
@@ -177,19 +176,8 @@ func main() {
 		return
 	}
 
-	c := make(chan os.Signal, 1)
-	signal.Notify(c, os.Interrupt)
-	go func() {
-		for sig := range c {
-			// Check if sig is interrupt (Ctrl+C)
-			if sig.String() == "interrupt" {
-				l.Close()
-				close(c)
-			} else {
-				fmt.Printf("Received signal: %s\n", sig.String())
-			}
-		}
-	}()
+	// Listen to OS signals
+	comms.CloseOnSignal(l, os.Interrupt)
 
 	// Prepare the input (mq) and output (mw) ends of the game.
 	sc := comms.NewSessionCollection()
