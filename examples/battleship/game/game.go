@@ -33,7 +33,8 @@ func (s GameStage) String() string {
 type ShipID int
 
 const (
-	ShipIDCarrier ShipID = iota
+	ShipUndefined ShipID = iota
+	ShipIDCarrier
 	ShipIDBattleship
 	ShipIDCruiser
 	ShipIDSubmarine
@@ -96,6 +97,32 @@ func (d ShipDirection) String() string {
 	}
 }
 
+// ShipPlacement represents a ship's placement.
+type ShipPlacement struct {
+	ID         ShipID
+	Coordinate [2]int
+	Direction  ShipDirection
+}
+
+// NewShipPlacement creates a new ShipPlacement.
+func NewShipPlacement(id ShipID, cord [2]int, dir ShipDirection) (sp *ShipPlacement, err error) {
+	sp = &ShipPlacement{
+		ID:         id,
+		Coordinate: cord,
+		Direction:  dir,
+	}
+	return
+}
+
+func (sp ShipPlacement) String() string {
+	return fmt.Sprintf("%s at (%d, %d) %s", sp.ID, sp.Coordinate[0], sp.Coordinate[1], sp.Direction)
+}
+
+// ToShipState converts ShipPlacement to ShipState.
+func (sp ShipPlacement) ToShipState() (state *ShipState, err error) {
+	return NewShipState(sp.ID, sp.Coordinate, sp.Direction)
+}
+
 type ShipState struct {
 	ID          ShipID
 	HP          int
@@ -142,4 +169,74 @@ func NewShipState(id ShipID, cord [2]int, dir ShipDirection) (state *ShipState, 
 		Coordinates: cords,
 	}
 	return
+}
+
+type ShipStates []ShipState
+
+func (s ShipStates) Validate() error {
+	if s == nil {
+		return fmt.Errorf("nil pointer")
+	}
+
+	// Check if all ships are placed.
+	for i := ShipIDCarrier; i <= ShipIDDestroyer; i++ {
+		found := false
+		for j := range s {
+			if s[j].ID == i {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return fmt.Errorf("ship %v not placed", i)
+		}
+	}
+
+	// Check if ships have duplicated coordinate(s)
+	coords := make(map[[2]int]bool)
+	for i := range s {
+		for j := range s[i].Coordinates {
+			if coords[s[i].Coordinates[j]] {
+				return fmt.Errorf("duplicated coordinate: (%d, %d)",
+					s[i].Coordinates[j][0], s[i].Coordinates[j][1])
+			}
+			coords[s[i].Coordinates[j]] = true
+		}
+	}
+	return nil
+}
+
+func (s ShipStates) Initialize() error {
+	if s == nil {
+		return fmt.Errorf("nil pointer")
+	}
+	for i, l := 0, len(s); i < l; i++ {
+		s[i].HP = s[i].ID.Size()
+	}
+	return nil
+}
+
+type BoardCellState int
+
+const BoardCellStateUnknown BoardCellState = 0
+
+const (
+	BoardCellStateHit BoardCellState = 1 << iota
+	BoardCellStateMiss
+	BoardCellStateSunk
+)
+
+func (s BoardCellState) String() string {
+	switch s {
+	case BoardCellStateUnknown:
+		return "Unknown"
+	case BoardCellStateHit:
+		return "Hit"
+	case BoardCellStateMiss:
+		return "Miss"
+	case BoardCellStateSunk:
+		return "Sunk"
+	default:
+		return "Unknown"
+	}
 }
