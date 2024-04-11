@@ -11,6 +11,7 @@ const (
 	BoardCellStateSunk
 )
 
+
 type PlayerState struct {
 	Ready      bool
 	Ships      [5]ShipState

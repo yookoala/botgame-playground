@@ -18,13 +18,35 @@ type dummyGame struct {
 	player1 *comms.Session
 	player2 *comms.Session
 
+	playerState map[*comms.Session]game.PlayerState
+
 	lock *sync.Mutex
+
+	frameRequests map[string]comms.Request
 }
 
 func NewDummyGame() *dummyGame {
 	return &dummyGame{
 		lock: &sync.Mutex{},
+
+		playerState: make(map[*comms.Session]game.PlayerState),
+
+		frameRequests: make(map[string]comms.Request),
 	}
+}
+
+func (g *dummyGame) IsPlayerSession(sessionID string) bool {
+	return g.GetPlayerSession(sessionID) != nil
+}
+
+func (g *dummyGame) GetPlayerSession(sessionID string) *comms.Session {
+	if g.player1 != nil && g.player1.ID() == sessionID {
+		return g.player1
+	}
+	if g.player2 != nil && g.player2.ID() == sessionID {
+		return g.player2
+	}
+	return nil
 }
 
 func (g *dummyGame) HandleMessage(ctx context.Context, min comms.Message, mw comms.MessageWriter) error {
@@ -32,7 +54,7 @@ func (g *dummyGame) HandleMessage(ctx context.Context, min comms.Message, mw com
 	if min.Type() != "request" {
 		return fmt.Errorf("invalid request type: %v", min.Type())
 	}
-	//log.Printf("received message: %s", min)
+	// log.Printf("received message: %s, game stage: %s", min, g.stage)
 
 	// Resolve context variables.
 	sc := comms.GetSessionCollection(ctx)
@@ -117,7 +139,9 @@ func (g *dummyGame) HandleMessage(ctx context.Context, min comms.Message, mw com
 			// start accepting game setup request.
 			if g.player1 != nil && g.player2 != nil {
 				log.Print("move on to setup stage")
+				g.lock.Lock()
 				g.stage = game.GameStageSetup
+				g.lock.Unlock()
 				mw.WriteMessage(comms.NewEvent("stage:change", game.GameStageSetup))
 			}
 
@@ -147,10 +171,104 @@ func (g *dummyGame) HandleMessage(ctx context.Context, min comms.Message, mw com
 			return fmt.Errorf("invalid request type: %v", req.RequestType())
 		}
 
-		ships := make([]game.ShipState, 5)
+		ships := make([]game.ShipPlacement, 5)
 		req.ReadDataTo(&ships)
 
-		log.Printf("received setup request: %v", ships)
+		// Only allow player to setup their own ships.
+		s := g.GetPlayerSession(comms.GetSessionID(ctx))
+		if s == nil {
+			mw.WriteMessage(comms.NewErrorResponse(
+				sessionID,
+				req.RequestID(),
+				403,
+				"error",
+				"forbidden",
+			))
+			return nil
+		}
+
+		// Each player can only setup once.
+		if _, ok := g.playerState[s]; ok {
+			mw.WriteMessage(comms.NewErrorResponse(
+				sessionID,
+				req.RequestID(),
+				400,
+				"error",
+				"state already set",
+			))
+			return nil
+		}
+
+		// Validate the ship placements.
+		shipStates := make(game.ShipStates, len(ships))
+		for i, sp := range ships {
+			ss, err := sp.ToShipState()
+			if err != nil {
+				mw.WriteMessage(comms.NewErrorResponse(
+					sessionID,
+					req.RequestID(),
+					400,
+					"error",
+					err.Error(),
+				))
+				return nil
+			}
+			shipStates[i] = *ss
+		}
+
+		if err := shipStates.Validate(); err != nil {
+			mw.WriteMessage(comms.NewErrorResponse(
+				sessionID,
+				req.RequestID(),
+				400,
+				"error",
+				err.Error(),
+			))
+			return nil
+		}
+
+		log.Printf("accepted setup: %v", shipStates)
+		g.playerState[s] = game.PlayerState{
+			Ready: true,
+			Ships: shipStates,
+		}
+
+		if len(g.playerState) == 2 {
+
+			// Announce stage change
+			mw.WriteMessage(comms.NewEvent(
+				"stage:change",
+				game.GameStagePlaying,
+			))
+
+			// Resolve initial frame (frame 0)
+			mw.WriteMessage(comms.NewEvent(
+				"frame:update",
+				nil,
+			))
+
+			// Change the game stage to playing
+			g.lock.Lock()
+			g.stage = game.GameStagePlaying
+			g.lock.Unlock()
+		}
+
+	case game.GameStagePlaying:
+		req := min.(comms.Request)
+		switch req.RequestType() {
+		case "shot":
+			g.lock.Lock()
+			if _, ok := g.frameRequests[sessionID]; !ok {
+				// Only accept the first shot request.
+				g.frameRequests[sessionID] = req
+			}
+			if len(g.frameRequests) == 2 {
+				// Both players has submitted their shot.
+				// Resolve the frame.
+				log.Printf("here!")
+			}
+			g.lock.Unlock()
+		}
 	}
 	return nil
 }
