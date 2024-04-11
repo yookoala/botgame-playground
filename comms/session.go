@@ -272,8 +272,18 @@ func (sc *sessionCollection) Get(id string) *Session {
 func (sc *sessionCollection) Map(f func(*Session)) {
 	sc.lock.RLock()
 	defer sc.lock.RUnlock()
+
+	// WaitGroup to wait for all goroutines to finish.
+	// Map will block until all session handlers are done.
+	wg := &sync.WaitGroup{}
+	defer wg.Wait()
+
 	for _, s := range sc.sessions {
 		// Start a goroutine to handle each session.
-		go f(s)
+		wg.Add(1)
+		go func(s *Session) {
+			f(s)
+			wg.Done()
+		}(s)
 	}
 }

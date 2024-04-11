@@ -3,6 +3,7 @@ package comms_test
 import (
 	"bufio"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"net"
@@ -157,5 +158,70 @@ func TestSessionCollection(t *testing.T) {
 	}
 	if expected, actual := 0, sc.Len(); expected != actual {
 		t.Errorf("expected %#v, got %#v", expected, actual)
+	}
+}
+
+func TestSessionCollection_Map(t *testing.T) {
+	sc := comms.NewSessionCollection()
+	if sc == nil {
+		t.Fatalf("unexpected nil session collection")
+	}
+
+	var dummyConn io.ReadWriteCloser
+	var count int
+
+	// Count the number of session added, if any.
+	onAdd := func(s *comms.Session) {
+		count++
+	}
+	sc.OnAdd(onAdd)
+
+	const scale = 30
+	queue := make(chan int, scale*3)
+	defer close(queue)
+
+	// New dummy session for test
+	for i := 1; i <= scale; i++ {
+		s := comms.NewSession(fmt.Sprintf("session-%d", i), dummyConn)
+		// Test adding a session to the collection.
+		if err := sc.Add(s); err != nil {
+			t.Errorf("unexpected error adding session to collection: %#v", err)
+			return
+		}
+	}
+
+	// Test map function
+	wg := &sync.WaitGroup{}
+	wg.Add(scale * 2)
+	sc.Map(func(s *comms.Session) {
+		queue <- 1
+		wg.Done()
+	})
+	sc.Map(func(s *comms.Session) {
+		queue <- 2
+		wg.Done()
+	})
+	wg.Wait()
+
+	var (
+		i, prev int
+		res     [scale * 2]int
+	)
+	for n := range queue {
+		res[i] = n
+		i++
+		if i >= scale*2 {
+			break
+		}
+	}
+	for i, n := range res {
+		if n < prev {
+			t.Errorf("[i=%d] Unexpected order of map function. Expected to be >= %d, got %d",
+				i, prev, n)
+			t.Logf("Result sequence: %#v", res)
+			t.Logf("Map are supposed to run in orderly manner")
+			return
+		}
+		prev = n
 	}
 }

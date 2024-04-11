@@ -264,6 +264,8 @@ func (r *SimpleMessageBroker) WriteMessage(m Message) error {
 		return nil
 	}
 	if m.Type() == "event" {
+		// Note: events should be ordered. Event should be queued up and send to each session
+		//       in the exact order that the events are emitted.
 		log.Printf("SimpleMessageBroker will broadcast event to all sessions (len=%d), message: %s", r.sessions.Len(), m)
 		errs := NewRouterErrorCollection()
 		r.sessions.Map(func(sess *Session) {
