@@ -118,7 +118,7 @@ func (g *dummyGame) HandleMessage(ctx context.Context, min comms.Message, mw com
 			if g.player1 != nil && g.player2 != nil {
 				log.Print("move on to setup stage")
 				g.stage = game.GameStageSetup
-				mw.WriteMessage(comms.NewEvent(sessionID, "stage:change", game.GameStageSetup))
+				mw.WriteMessage(comms.NewEvent("stage:change", game.GameStageSetup))
 			}
 
 		case "subscribe":
