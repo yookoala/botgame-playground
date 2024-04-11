@@ -187,8 +187,8 @@ func NewSessionCollection() SessionCollection {
 
 // Has checks if a session exists in the collection.
 func (sc *sessionCollection) Has(id string) bool {
-	sc.lock.Lock()
-	defer sc.lock.Unlock()
+	sc.lock.RLock()
+	defer sc.lock.RUnlock()
 	_, ok := sc.sessions[id]
 	return ok
 }
