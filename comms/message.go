@@ -256,9 +256,8 @@ func NewSignal(signal string, data interface{}) Message {
 }
 
 // NewEvent creates a new event message
-func NewEvent(sessionID, eventType string, data interface{}) Message {
+func NewEvent(eventType string, data interface{}) Message {
 	m := &message{
-		sessionID:   sessionID,
 		eventType:   eventType,
 		messageType: "event",
 	}
